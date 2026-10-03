@@ -144,6 +144,29 @@ const hi = {
   forgotPin: 'पिन भूल गए?',
   forgotWarn: 'पिन हटाने के लिए सारा डेटा मिटाना पड़ेगा। क्या सारा हिसाब मिटा दें?',
   resetAll: 'सारा डेटा मिटाएँ',
+
+  // history (हिस्ट्री) — har badlav ka record
+  viewHistory: 'हिस्ट्री देखें',
+  history: 'हिस्ट्री',
+  historySub: 'सब बदलाव अपने आप सेव होते हैं — जोड़ना, बदलना, हटाना',
+  historyEmpty: 'अभी कोई बदलाव नहीं हुआ है। दाली लिखते ही यहाँ रिकॉर्ड बनेगा।',
+  historyCleared: 'हिस्ट्री मिटा दी गई',
+  clearHistory: 'हिस्ट्री मिटाएँ',
+  clearHistoryConfirm: 'क्या पूरी हिस्ट्री मिटानी है? दालियाँ बनी रहेंगी।',
+  today: 'आज',
+  yesterday: 'कल',
+  actAdd: 'नई दाली लिखी',
+  actEdit: 'बदलाव किया',
+  actDelete: 'दाली हटाई',
+  actRenameEvent: 'रजिस्टर का नाम बदला',
+  fName: 'नाम',
+  fVillage: 'गाँव',
+  fRelation: 'नाता',
+  fAmount: 'रकम',
+  fItem: 'सामान',
+  fDate: 'तारीख',
+  fNote: 'नोट',
+  fEventName: 'रजिस्टर का नाम',
 } as const;
 
 export type TString = keyof typeof hi;
@@ -283,6 +306,29 @@ const ur: Record<TString, string> = {
   forgotPin: 'پن بھول گئے؟',
   forgotWarn: 'پن ہٹانے کے لیے سارا ڈیٹا مٹانا پڑے گا۔ کیا سارا حساب مٹا دیں؟',
   resetAll: 'سارا ڈیٹا مٹائیں',
+
+  // history
+  viewHistory: 'تاریخ دیکھیں',
+  history: 'تاریخ',
+  historySub: 'سب تبدیلیاں خود بخود محفوظ ہوتی ہیں — لکھنا، بدلنا، مٹانا',
+  historyEmpty: 'ابھی کوئی تبدیلی نہیں ہوئی۔ دالی لکھتے ہی یہاں ریکارڈ بنے گا۔',
+  historyCleared: 'تاریخ مٹا دی گئی',
+  clearHistory: 'تاریخ مٹائیں',
+  clearHistoryConfirm: 'کیا پوری تاریخ مٹانی ہے؟ دالیاں باقی رہیں گی۔',
+  today: 'آج',
+  yesterday: 'کل',
+  actAdd: 'نئی دالی لکھی',
+  actEdit: 'تبدیلی کی',
+  actDelete: 'دالی ہٹائی',
+  actRenameEvent: 'رجسٹر کا نام بدلا',
+  fName: 'نام',
+  fVillage: 'گاؤں',
+  fRelation: 'رشتہ',
+  fAmount: 'رقم',
+  fItem: 'سامان',
+  fDate: 'تاریخ',
+  fNote: 'نوٹ',
+  fEventName: 'رجسٹر کا نام',
 };
 
 const en: Record<TString, string> = {
@@ -420,6 +466,29 @@ const en: Record<TString, string> = {
   forgotPin: 'Forgot PIN?',
   forgotWarn: 'Removing the PIN requires erasing all data. Erase everything?',
   resetAll: 'Erase all data',
+
+  // history
+  viewHistory: 'View history',
+  history: 'History',
+  historySub: 'Every change is saved automatically — add, edit, delete',
+  historyEmpty: 'No changes yet. A record will appear here as soon as you write a daali.',
+  historyCleared: 'History cleared',
+  clearHistory: 'Clear history',
+  clearHistoryConfirm: 'Clear the whole history? The daali entries stay.',
+  today: 'Today',
+  yesterday: 'Yesterday',
+  actAdd: 'New daali written',
+  actEdit: 'Changed',
+  actDelete: 'Daali deleted',
+  actRenameEvent: 'Register renamed',
+  fName: 'Name',
+  fVillage: 'Village',
+  fRelation: 'Relation',
+  fAmount: 'Amount',
+  fItem: 'Item',
+  fDate: 'Date',
+  fNote: 'Note',
+  fEventName: 'Register name',
 };
 
 const dicts: Record<Language, Record<TString, string>> = { hi, ur, en };

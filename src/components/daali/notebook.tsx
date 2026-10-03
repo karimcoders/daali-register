@@ -24,6 +24,7 @@ import {
   ChevronLeft,
   ChevronRight,
   FileDown,
+  History,
   MoreVertical,
   Pencil,
   Printer,
@@ -62,9 +63,10 @@ interface NotebookProps {
   onDeleteEvent: () => void;
   onPrint: () => void;
   onPdf: () => void;
+  onHistory: () => void;
 }
 
-export function Notebook({ onRenameEvent, onDeleteEvent, onPrint, onPdf }: NotebookProps) {
+export function Notebook({ onRenameEvent, onDeleteEvent, onPrint, onPdf, onHistory }: NotebookProps) {
   const t = useT();
   const events = useDaali((s) => s.events);
   const allEntries = useDaali((s) => s.allEntries);
@@ -279,6 +281,9 @@ export function Notebook({ onRenameEvent, onDeleteEvent, onPrint, onPdf }: Noteb
             </DropdownMenuItem>
             <DropdownMenuItem onClick={onPdf}>
               <FileDown className="h-4 w-4" /> {t('pdfDownload')}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onHistory}>
+              <History className="h-4 w-4" /> {t('viewHistory')}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={onPrint}>
               <Printer className="h-4 w-4" /> {t('printPdf')}

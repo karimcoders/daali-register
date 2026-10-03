@@ -1,9 +1,10 @@
 // ─── IndexedDB wrapper — lightweight, promise-based, zero dependencies ──────
 
 const DB_NAME = 'daali-register';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 export const STORE_EVENTS = 'events';
 export const STORE_ENTRIES = 'entries';
+export const STORE_HISTORY = 'history';
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -23,6 +24,12 @@ function openDB(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(STORE_ENTRIES)) {
         const store = db.createObjectStore(STORE_ENTRIES, { keyPath: 'id' });
         store.createIndex('eventId', 'eventId', { unique: false });
+      }
+      // v2: history store — every add/edit/delete is recorded here
+      if (!db.objectStoreNames.contains(STORE_HISTORY)) {
+        const h = db.createObjectStore(STORE_HISTORY, { keyPath: 'id' });
+        h.createIndex('eventId', 'eventId', { unique: false });
+        h.createIndex('at', 'at', { unique: false });
       }
     };
     req.onsuccess = () => resolve(req.result);

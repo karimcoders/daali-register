@@ -60,6 +60,28 @@ export interface BackupFile {
   entries: DaaliEntry[];
 }
 
+/** One recorded change in the register's history (हिस्ट्री) */
+export type HistoryAction = 'add' | 'edit' | 'delete' | 'renameEvent' | 'deleteEvent';
+
+export interface HistoryChange {
+  /** neutral field key — the UI translates it (fName, fAmount…) */
+  field: string;
+  from: string;
+  to: string;
+}
+
+export interface HistoryItem {
+  id: string;
+  eventId: string;
+  /** entryId or 'event' for register-level actions */
+  refId: string;
+  /** snapshot of the name at that time — history stays readable even after edits/deletes */
+  name: string;
+  action: HistoryAction;
+  changes: HistoryChange[];
+  at: number;
+}
+
 /** Payload used when adding or editing an entry */
 export interface EntryInput {
   name: string;

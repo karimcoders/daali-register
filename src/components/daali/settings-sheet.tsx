@@ -14,6 +14,7 @@ import {
   Database,
   FileDown,
   FileUp,
+  History,
   Info,
   Languages,
   Lock,
@@ -41,10 +42,12 @@ export function SettingsSheet({
   open,
   onOpenChange,
   onPrint,
+  onHistory,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   onPrint: () => void;
+  onHistory: () => void;
 }) {
   const t = useT();
   const settings = useDaali((s) => s.settings);
@@ -349,6 +352,11 @@ export function SettingsSheet({
                       <button className="ghost-ink-btn h-11 w-full" onClick={onPrint}>
                         <span className="inline-flex items-center gap-2">
                           <Printer className="h-4 w-4" /> {t('printPdf')}
+                        </span>
+                      </button>
+                      <button className="ghost-ink-btn h-11 w-full" onClick={onHistory}>
+                        <span className="inline-flex items-center gap-2">
+                          <History className="h-4 w-4" /> {t('viewHistory')}
                         </span>
                       </button>
                     </>

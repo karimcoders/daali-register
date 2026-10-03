@@ -2,11 +2,21 @@
 'use client';
 
 import { create } from 'zustand';
-import type { DaaliEntry, DaaliEvent, EntryInput, Settings, SortMode, Language } from './types';
+import type {
+  DaaliEntry,
+  DaaliEvent,
+  EntryInput,
+  HistoryChange,
+  HistoryItem,
+  Settings,
+  SortMode,
+  Language,
+} from './types';
 import { DEFAULT_SETTINGS } from './types';
 import {
   STORE_ENTRIES,
   STORE_EVENTS,
+  STORE_HISTORY,
   idbClear,
   idbDelete,
   idbGetAll,
@@ -15,6 +25,7 @@ import {
 } from './db';
 
 const SETTINGS_KEY = 'daali-settings-v1';
+const HISTORY_CAP = 600; // newest N items kept in memory/list
 
 function hashPin(pin: string): string {
   // Simple local deterrent (not cryptographic) — data never leaves the device anyway
@@ -78,6 +89,7 @@ interface DaaliState {
   view: 'home' | 'notebook';
   events: DaaliEvent[];
   allEntries: DaaliEntry[];
+  history: HistoryItem[];
   currentEventId: string | null;
   currentPage: number;
   highlightId: string | null;
@@ -87,6 +99,7 @@ interface DaaliState {
   init: () => Promise<void>;
   unlock: (pin: string) => boolean;
   resetAll: () => Promise<void>;
+  clearHistory: () => Promise<void>;
 
   setLanguage: (l: Language) => void;
   setInputScript: (sc: Settings['inputScript']) => void;
@@ -111,12 +124,46 @@ interface DaaliState {
   importBackup: (events: DaaliEvent[], entries: DaaliEntry[]) => Promise<void>;
 }
 
-export const useDaali = create<DaaliState>((set, get) => ({
+export const useDaali = create<DaaliState>((set, get) => {
+  // हिस्ट्री — har add/edit/delete ka record; kabhi main action ko block nahi karta
+  const pushHistory = (item: {
+    eventId: string;
+    refId: string;
+    name: string;
+    action: HistoryItem['action'];
+    changes: HistoryChange[];
+  }) => {
+    const full: HistoryItem = { id: uid(), at: Date.now(), ...item };
+    set((st) => ({ history: [full, ...st.history].slice(0, HISTORY_CAP) }));
+    idbPut(STORE_HISTORY, full).catch(() => {
+      /* history is best-effort — data writes are the priority */
+    });
+  };
+
+  const entryChanges = (o: DaaliEntry, n: DaaliEntry): HistoryChange[] => {
+    const ch: HistoryChange[] = [];
+    const cmp = (field: keyof DaaliEntry) => {
+      const a = String(o[field] ?? '');
+      const b = String(n[field] ?? '');
+      if (a !== b) ch.push({ field, from: a, to: b });
+    };
+    cmp('name');
+    cmp('village');
+    cmp('relationship');
+    cmp('amount');
+    cmp('item');
+    cmp('date');
+    cmp('note');
+    return ch;
+  };
+
+  return {
   hydrated: false,
   locked: false,
   view: 'home',
   events: [],
   allEntries: [],
+  history: [],
   currentEventId: null,
   currentPage: 1,
   highlightId: null,
@@ -131,14 +178,32 @@ export const useDaali = create<DaaliState>((set, get) => ({
     }
     applyDocLang(settings.language);
     try {
-      const [events, allEntries] = await Promise.all([
+      const [events, allEntries, history] = await Promise.all([
         idbGetAll<DaaliEvent>(STORE_EVENTS),
         idbGetAll<DaaliEntry>(STORE_ENTRIES),
+        idbGetAll<HistoryItem>(STORE_HISTORY).catch(() => [] as HistoryItem[]),
       ]);
       events.sort((a, b) => b.updatedAt - a.updatedAt);
-      set({ events, allEntries, hydrated: true, idbOk: true, locked: !!settings.pinHash });
+      history.sort((a, b) => b.at - a.at);
+      set({
+        events,
+        allEntries,
+        history: history.slice(0, HISTORY_CAP),
+        hydrated: true,
+        idbOk: true,
+        locked: !!settings.pinHash,
+      });
     } catch {
-      set({ events: [], allEntries: [], hydrated: true, idbOk: false, locked: !!settings.pinHash });
+      set({ events: [], allEntries: [], history: [], hydrated: true, idbOk: false, locked: !!settings.pinHash });
+    }
+  },
+
+  clearHistory: async () => {
+    set({ history: [] });
+    try {
+      await idbClear(STORE_HISTORY);
+    } catch {
+      /* ignore */
     }
   },
 
@@ -152,6 +217,7 @@ export const useDaali = create<DaaliState>((set, get) => ({
     try {
       await idbClear(STORE_EVENTS);
       await idbClear(STORE_ENTRIES);
+      await idbClear(STORE_HISTORY);
     } catch {
       // ignore
     }
@@ -160,6 +226,7 @@ export const useDaali = create<DaaliState>((set, get) => ({
       view: 'home',
       events: [],
       allEntries: [],
+      history: [],
       currentEventId: null,
       currentPage: 1,
     });
@@ -220,6 +287,7 @@ export const useDaali = create<DaaliState>((set, get) => ({
   },
 
   renameEvent: async (id, name) => {
+    const old = get().events.find((e) => e.id === id);
     const events = get().events.map((e) => (e.id === id ? { ...e, name: name.trim(), updatedAt: Date.now() } : e));
     set({ events });
     const ev = events.find((e) => e.id === id);
@@ -229,6 +297,13 @@ export const useDaali = create<DaaliState>((set, get) => ({
       } catch {
         /* in-memory only */
       }
+      pushHistory({
+        eventId: id,
+        refId: 'event',
+        name: old?.name || ev.name,
+        action: 'renameEvent',
+        changes: old && old.name !== ev.name ? [{ field: 'eventName', from: old.name, to: ev.name }] : [],
+      });
     }
   },
 
@@ -246,6 +321,12 @@ export const useDaali = create<DaaliState>((set, get) => ({
       allEntries: st.allEntries.filter((e) => e.eventId !== id),
       ...(st.currentEventId === id ? { view: 'home' as const, currentEventId: null, currentPage: 1 } : {}),
     }));
+    // register gaya to uski poori history bhi saaf — koi orphan record nahi
+    const deadHistory = get().history.filter((h) => h.eventId === id);
+    set((st) => ({ history: st.history.filter((h) => h.eventId !== id) }));
+    for (const h of deadHistory) {
+      idbDelete(STORE_HISTORY, h.id).catch(() => {});
+    }
   },
 
   openEvent: (id) => set({ view: 'notebook', currentEventId: id, currentPage: 1, highlightId: null }),
@@ -291,6 +372,13 @@ export const useDaali = create<DaaliState>((set, get) => ({
         /* ignore */
       }
     }
+    pushHistory({
+      eventId,
+      refId: entry.id,
+      name: entry.name,
+      action: 'add',
+      changes: [],
+    });
   },
 
   updateEntry: async (id, data) => {
@@ -315,14 +403,34 @@ export const useDaali = create<DaaliState>((set, get) => ({
     } catch {
       set({ idbOk: false });
     }
+    const changes = entryChanges(old, updated);
+    if (changes.length > 0) {
+      pushHistory({
+        eventId: updated.eventId,
+        refId: updated.id,
+        name: updated.name,
+        action: 'edit',
+        changes,
+      });
+    }
   },
 
   removeEntry: async (id) => {
+    const old = get().allEntries.find((e) => e.id === id);
     set((st) => ({ allEntries: st.allEntries.filter((e) => e.id !== id) }));
     try {
       await idbDelete(STORE_ENTRIES, id);
     } catch {
       /* ignore */
+    }
+    if (old) {
+      pushHistory({
+        eventId: old.eventId,
+        refId: old.id,
+        name: old.name,
+        action: 'delete',
+        changes: [],
+      });
     }
   },
 
@@ -332,6 +440,7 @@ export const useDaali = create<DaaliState>((set, get) => ({
     try {
       await idbClear(STORE_EVENTS);
       await idbClear(STORE_ENTRIES);
+      await idbClear(STORE_HISTORY);
       await idbPutMany(STORE_EVENTS, events);
       await idbPutMany(STORE_ENTRIES, entries);
       set({ idbOk: true });
@@ -339,8 +448,9 @@ export const useDaali = create<DaaliState>((set, get) => ({
       set({ idbOk: false });
     }
     const sorted = [...events].sort((a, b) => b.updatedAt - a.updatedAt);
-    set({ events: sorted, allEntries: entries, view: 'home', currentEventId: null, currentPage: 1 });
+    set({ events: sorted, allEntries: entries, history: [], view: 'home', currentEventId: null, currentPage: 1 });
   },
-}));
+  };
+});
 
 export type { DaaliState };

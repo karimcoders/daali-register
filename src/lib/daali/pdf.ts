@@ -273,32 +273,48 @@ function buildSheet(opts: {
   const emptyRows = Math.max(0, ROWS_PER_SHEET - sheet.length);
   for (let i = 0; i < emptyRows; i++) inner.appendChild(makeRow(null));
 
-  // footer — per-page number, grand total on the last sheet
+  // footer — grand total on its own WRAPPING line (flex once clipped long
+  // totals at the page edge — कुल दाली: ₹1,23,456 • नेवता… got cut), page
+  // number on a separate small line below. Nothing can overflow now.
   const foot = el('div', {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     borderTop: `2px solid ${C.lineBold}`,
     marginTop: '10px',
     paddingTop: '8px',
     fontFamily: handFont(rtl),
-    fontWeight: '700',
-    fontSize: '17px',
-    lineHeight: rtl ? '2' : '1.5',
+    width: '100%',
+    boxSizing: 'border-box',
   });
-  foot.appendChild(el('span', { fontSize: '14px', color: C.soft }, pageNum));
   if (sheetIndex === sheetCount - 1) {
-    const right = el(
-      'span',
-      {},
-      `${t('totalPeople')}: ${formatNumber(grandCount)}  •  ${t('totalDaali')}: ${formatRupees(grandSum)}` +
-        (itemCount > 0 ? `  •  ${t('itemCount')}: ${formatNumber(itemCount)}` : '')
+    const tot = el(
+      'div',
+      {
+        fontSize: '16px',
+        fontWeight: '700',
+        lineHeight: rtl ? '2' : '1.55',
+        textAlign: rtl ? 'left' : 'right',
+        whiteSpace: 'normal',
+        overflowWrap: 'break-word',
+        wordBreak: 'break-word',
+      },
+      `${t('totalPeople')}: ${formatNumber(grandCount)} • ${t('totalDaali')}: ${formatRupees(grandSum)}` +
+        (itemCount > 0 ? ` • ${t('itemCount')}: ${formatNumber(itemCount)}` : '')
     );
-    right.style.textAlign = rtl ? 'left' : 'right';
-    foot.appendChild(right);
-  } else {
-    foot.appendChild(el('span', {}));
+    foot.appendChild(tot);
   }
+  foot.appendChild(
+    el(
+      'div',
+      {
+        fontSize: '13px',
+        color: C.soft,
+        marginTop: '2px',
+        textAlign: rtl ? 'right' : 'left',
+        whiteSpace: 'normal',
+        overflowWrap: 'break-word',
+      },
+      pageNum
+    )
+  );
   inner.appendChild(foot);
 
   return page;

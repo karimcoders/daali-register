@@ -10,6 +10,7 @@ import { Notebook } from './notebook';
 import { NewEventSheet } from './new-event-sheet';
 import { SearchOverlay } from './search-overlay';
 import { SettingsSheet } from './settings-sheet';
+import { HistorySheet } from './history-sheet';
 import { PinLock } from './pin-lock';
 import { PrintRegister } from './print-register';
 import { BottomNav } from './bottom-nav';
@@ -49,6 +50,7 @@ export function DaaliApp() {
   const [renameId, setRenameId] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
   const [confirmDeleteEvent, setConfirmDeleteEvent] = useState(false);
@@ -146,6 +148,7 @@ export function DaaliApp() {
             onDeleteEvent={() => setConfirmDeleteEvent(true)}
             onPrint={handlePrint}
             onPdf={handlePdf}
+            onHistory={() => setHistoryOpen(true)}
           />
         )}
       </div>
@@ -170,7 +173,12 @@ export function DaaliApp() {
           setSettingsOpen(false);
           setTimeout(handlePrint, 120);
         }}
+        onHistory={() => {
+          setSettingsOpen(false);
+          setHistoryOpen(true);
+        }}
       />
+      <HistorySheet open={historyOpen} onOpenChange={setHistoryOpen} />
 
       {printing && <PrintRegister />}
 
