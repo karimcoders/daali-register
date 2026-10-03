@@ -71,3 +71,23 @@ Work Log:
 Stage Summary:
 - Hindi/Urdu writing quality fixed via dictionary + schwa-aware rules + suggestion chips + IME guards; Urdu gets proper Nastaliq rendering in all UI languages.
 - Permanent live link: https://karimcoders.github.io/daali-register/ (GitHub Pages, auto-deploys on push to main). Data: offline-first IndexedDB on device + JSON/CSV backup in app. Vercel not used (needs account login) — Pages serves the same static build; repo is Vercel-import-ready.
+
+---
+Task ID: 4
+Agent: Super Z (main agent)
+Task: User feedback round 3 — (1) "pdf sahi kaam nahi kar raha, download nahi ho raha" → real PDF file download; (2) click anywhere on the register to edit, jaise real pen se likhna; (3) "daali likho + aaj ki shaadi mein nevta hota hai wo bhi likho" → नेवता/सामान (non-cash gift) recording.
+
+Work Log:
+- REAL PDF DOWNLOAD (src/lib/daali/pdf.ts, new): jsPDF + html2canvas generate an actual .pdf file (no print dialog). Renders the register as A4 sheets (794×1123px, 20 ruled rows/sheet) in an off-screen container built with inline hex styles only, red margin line, handwritten Kalam/Nastaliq headers, per-sheet page numbers + grand-total footer, hi/ur/en incl. RTL. Trigger points: notebook top-bar FileDown button + ⋮ menu + Settings "PDF डाउनलोड करें" (ink-btn, busy state with "PDF बन रही है…"). window.print() kept as separate "प्रिंट करें".
+- ROOT-CAUSE DEBUG of the first PDF failure: html2canvas 1.4.1 throws "Attempting to parse an unsupported color function lab" — Chrome computes Tailwind v4 oklch/color-mix theme values into lab()/oklab() and html2canvas parses the ROOT chain even for subtree captures. Tried inline-sweep approaches; final robust fix: temporarily wrap window.getComputedStyle with a Proxy that maps every modern-color value (color, *-border-color, outline/caret/text-decoration/-webkit-text-stroke colors, box/text-shadow, background-image) to parseable rgb/transparent/none for html2canvas reads only, restored after capture. Verified PDF-OK on dev AND live site.
+- नेवता/सामान: DaaliEntry.item + EntryInput.item (store persists), amount=0 for item entries. WritingRow/EntryEditRow get नकद/नेवता mode chips (QuickAmounts strip + actions strip); item field is a TranslitInput (types Hindi/Urdu item names like "mithai" → मिठाई). Validation: name + (cash OR item). RegisterRow shows "🎁 item" in रकम column (font-hand, Nastaliq-aware); totals: कुल दाली counts cash only, "नेवता/सामान: N" appears when N>0, औसत = cash sum / cash count; search matches item + note; CSV gains सामान/नेवता column; print + PDF render item text in रकम column.
+- PEN-STYLE EDITING: RegisterRow cells individually clickable (name/village/relation/amount/date each stopPropagation → EditCell) — tapping any cell opens EntryEditRow with the cursor ON that cell (focusCell prop, incl. dateRef); blank ruled filler lines are now clickable → jump to the writing page + focus the writing line (focusWriting shared with the ＋ button event). writeHere copy updated to "यहाँ नई दाली लिखें…" + firstLineHint mentions नेवता.
+- Strings: pdfDownload/pdfMaking/pdfDone/pdfError, cashMode, itemMode, itemPh, itemCount, colAmount→"रकम / सामान", amountRequired→"रकम या सामान ज़रूरी है" in hi/ur/en. SW cache bumped daali-v5.
+- E2E agent-browser (dev + live): create register → गीता देवी ₹251 (direct Devanagari) → नेवता toggle → सुनीता "कपड़ा सेट" committed (🎁) → totals "कुल लोग: 2 • कुल दाली: ₹251 • नेवता/सामान: 1" exact → click ₹501 cell → edit opens amount-focused → change to 1001, totals live-update → search "sanjay" finds via latin mirror → blank-line click focuses writing line → nevta row reopens in item mode → PDF click → success, no console errors → reload persistence (IndexedDB) OK. Lint 0, tsc clean (src).
+- Deploy: committed 7e8b927, pushed to karimcoders/daali-register main → Actions deploy success → live verified: https://karimcoders.github.io/daali-register/ (new bundle contains नेवता strings; live E2E passed incl. PDF download).
+
+Stage Summary:
+- PDF ab seedha .pdf file download hota hai (print dialog nahi) — dev + live dono par verified.
+- नेवता/सामान entries (kapda, mithai, gift…) cash दाली ke saath ek hi register mein; totals cash alag, सामान count alag.
+- Register ki ab koi bhi line/cell par click karke waise hi edit hota hai jaise pen se likhte hain; khali line par click = agli dali likhna.
+- Live: https://karimcoders.github.io/daali-register/ • Repo: https://github.com/karimcoders/daali-register
