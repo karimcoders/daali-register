@@ -1,0 +1,631 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ─── Self-hosted fonts (offline PWA) ─────────────────────────────────────── */
+/* Kalam 400 devanagari */
+@font-face {
+  font-family: 'Kalam';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/kalam-400-devanagari.woff2') format('woff2');
+  unicode-range: U+0900-097F, U+1CD0-1CF9, U+200C-200D, U+20A8, U+20B9, U+20F0, U+25CC, U+A830-A839, U+A8E0-A8FF, U+11B00-11B09;
+}
+/* Kalam 400 latin */
+@font-face {
+  font-family: 'Kalam';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/kalam-400-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* Kalam 700 devanagari */
+@font-face {
+  font-family: 'Kalam';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/kalam-700-devanagari.woff2') format('woff2');
+  unicode-range: U+0900-097F, U+1CD0-1CF9, U+200C-200D, U+20A8, U+20B9, U+20F0, U+25CC, U+A830-A839, U+A8E0-A8FF, U+11B00-11B09;
+}
+/* Kalam 700 latin */
+@font-face {
+  font-family: 'Kalam';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/kalam-700-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* Noto Sans Devanagari 400 */
+@font-face {
+  font-family: 'Noto Sans Devanagari';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/noto-sans-devanagari-400-devanagari.woff2') format('woff2');
+  unicode-range: U+0900-097F, U+1CD0-1CF9, U+200C-200D, U+20A8, U+20B9, U+20F0, U+25CC, U+A830-A839, U+A8E0-A8FF, U+11B00-11B09;
+}
+@font-face {
+  font-family: 'Noto Sans Devanagari';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/noto-sans-devanagari-400-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* Noto Sans Devanagari 500 */
+@font-face {
+  font-family: 'Noto Sans Devanagari';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/noto-sans-devanagari-500-devanagari.woff2') format('woff2');
+  unicode-range: U+0900-097F, U+1CD0-1CF9, U+200C-200D, U+20A8, U+20B9, U+20F0, U+25CC, U+A830-A839, U+A8E0-A8FF, U+11B00-11B09;
+}
+@font-face {
+  font-family: 'Noto Sans Devanagari';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/noto-sans-devanagari-500-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* Noto Sans Devanagari 700 */
+@font-face {
+  font-family: 'Noto Sans Devanagari';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/noto-sans-devanagari-700-devanagari.woff2') format('woff2');
+  unicode-range: U+0900-097F, U+1CD0-1CF9, U+200C-200D, U+20A8, U+20B9, U+20F0, U+25CC, U+A830-A839, U+A8E0-A8FF, U+11B00-11B09;
+}
+@font-face {
+  font-family: 'Noto Sans Devanagari';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/noto-sans-devanagari-700-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-body);
+  --font-mono: ui-monospace, monospace;
+  --font-hand: var(--font-hand);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  /* daali palette */
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-margin-red: var(--margin-red);
+  --color-ruled: var(--ruled);
+  --color-paper: var(--paper);
+  --color-desk: var(--desk);
+}
+
+:root {
+  --radius: 0.5rem;
+  /* Warm cream desk behind the register */
+  --background: oklch(0.93 0.024 90);
+  --foreground: oklch(0.28 0.03 250);
+  --card: oklch(0.972 0.014 92);
+  --card-foreground: oklch(0.28 0.03 250);
+  --popover: oklch(0.985 0.01 95);
+  --popover-foreground: oklch(0.28 0.03 250);
+  --primary: oklch(0.32 0.045 250);
+  --primary-foreground: oklch(0.98 0.008 95);
+  --secondary: oklch(0.9 0.03 92);
+  --secondary-foreground: oklch(0.32 0.045 250);
+  --muted: oklch(0.91 0.022 92);
+  --muted-foreground: oklch(0.48 0.025 250);
+  --accent: oklch(0.9 0.05 60);
+  --accent-foreground: oklch(0.3 0.08 30);
+  --destructive: oklch(0.55 0.22 27);
+  --border: oklch(0.82 0.03 90);
+  --input: oklch(0.85 0.03 90);
+  --ring: oklch(0.62 0.06 90);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+
+  /* Daali register palette */
+  --ink: #26313d;               /* dark blue-black ink */
+  --ink-soft: #55606d;          /* lighter ink for hints */
+  --margin-red: #c0392b;        /* register margin red */
+  --ruled: #b9c4d6;             /* thin gray-blue ruled lines */
+  --paper: #fbf6e8;             /* warm off-white paper */
+  --paper-2: #f4ecd7;           /* slightly darker paper */
+  --desk: #ece2c8;              /* desk background */
+  --font-body: 'Noto Sans Devanagari', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-hand: 'Kalam', 'Noto Sans Devanagari', cursive;
+}
+
+.dark {
+  --background: oklch(0.17 0.015 60);
+  --foreground: oklch(0.9 0.02 90);
+  --card: oklch(0.22 0.02 60);
+  --card-foreground: oklch(0.9 0.02 90);
+  --popover: oklch(0.23 0.02 60);
+  --popover-foreground: oklch(0.9 0.02 90);
+  --primary: oklch(0.88 0.03 92);
+  --primary-foreground: oklch(0.24 0.03 60);
+  --secondary: oklch(0.28 0.02 60);
+  --secondary-foreground: oklch(0.9 0.02 90);
+  --muted: oklch(0.27 0.02 60);
+  --muted-foreground: oklch(0.68 0.02 90);
+  --accent: oklch(0.32 0.04 60);
+  --accent-foreground: oklch(0.92 0.02 90);
+  --destructive: oklch(0.65 0.2 25);
+  --border: oklch(1 0 0 / 14%);
+  --input: oklch(1 0 0 / 18%);
+  --ring: oklch(0.6 0.04 90);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+
+  /* Night paper — dimmed like lamp light on the register */
+  --ink: #1f2730;
+  --ink-soft: #4c5764;
+  --margin-red: #a63c30;
+  --ruled: #a3aebe;
+  --paper: #ded3b6;
+  --paper-2: #d3c7a8;
+  --desk: #241f18;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-body);
+    background-image:
+      radial-gradient(ellipse 120% 90% at 50% -10%, rgba(255, 252, 240, 0.65), transparent 60%),
+      radial-gradient(ellipse 100% 80% at 50% 110%, rgba(120, 90, 40, 0.12), transparent 55%);
+    background-attachment: fixed;
+  }
+  .dark body {
+    background-image:
+      radial-gradient(ellipse 120% 90% at 50% -10%, rgba(255, 240, 200, 0.05), transparent 60%);
+  }
+}
+
+/* ─── Paper (register sheet) ──────────────────────────────────────────────── */
+
+.paper {
+  background-color: var(--paper);
+  border-radius: 10px;
+  position: relative;
+  box-shadow:
+    0 1px 2px rgba(70, 50, 20, 0.18),
+    0 10px 28px rgba(70, 50, 20, 0.22),
+    0 2px 6px rgba(70, 50, 20, 0.1);
+  transition: background-color 0.3s ease;
+}
+
+/* subtle paper grain via inline SVG noise */
+.paper::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0.5;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.05'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  mix-blend-mode: multiply;
+}
+.dark .paper::before {
+  mix-blend-mode: multiply;
+  opacity: 0.8;
+}
+
+/* faint aged stains near corners */
+.paper::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(circle 90px at 96% 4%, rgba(160, 120, 50, 0.06), transparent 70%),
+    radial-gradient(circle 70px at 4% 98%, rgba(160, 120, 50, 0.05), transparent 70%);
+}
+.dark .paper::after {
+  background:
+    radial-gradient(circle 90px at 96% 4%, rgba(0, 0, 0, 0.09), transparent 70%),
+    radial-gradient(circle 70px at 4% 98%, rgba(0, 0, 0, 0.08), transparent 70%);
+}
+
+/* register spine impression on the left edge */
+.paper-spine {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 16px;
+  border-radius: 10px 0 0 10px;
+  pointer-events: none;
+  background: linear-gradient(
+    to right,
+    rgba(110, 80, 35, 0.16),
+    rgba(110, 80, 35, 0.05) 45%,
+    transparent
+  );
+}
+.dark .paper-spine {
+  background: linear-gradient(
+    to right,
+    rgba(0, 0, 0, 0.22),
+    rgba(0, 0, 0, 0.07) 45%,
+    transparent
+  );
+}
+
+/* red vertical margin line of the register */
+.paper-margin {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3.25rem;
+  width: 1.5px;
+  pointer-events: none;
+  background: var(--margin-red);
+  opacity: 0.5;
+}
+.paper-margin::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 1px;
+  background: var(--margin-red);
+  opacity: 0.4;
+}
+
+/* a ruled row of the register */
+.ruled-row {
+  border-bottom: 1px solid var(--ruled);
+  min-height: 46px;
+}
+@media (min-width: 640px) {
+  .ruled-row {
+    min-height: 50px;
+  }
+}
+
+/* handwriting */
+.font-hand {
+  font-family: var(--font-hand);
+}
+
+/* dotted blank like "____________" on paper */
+.paper-blank {
+  border-bottom: 1.5px dotted rgba(70, 60, 40, 0.5);
+  min-width: 2rem;
+}
+
+/* paper-style input: looks like writing on a line */
+.paper-input {
+  background: transparent;
+  border: none;
+  border-bottom: 1.5px dotted rgba(70, 60, 40, 0.55);
+  border-radius: 0;
+  padding: 0.375rem 0.25rem;
+  color: var(--ink);
+  font-family: var(--font-body);
+  width: 100%;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+.paper-input::placeholder {
+  color: rgba(85, 96, 109, 0.55);
+}
+.paper-input:focus {
+  border-bottom: 2px solid var(--margin-red);
+}
+
+/* ink button — like a stamp on paper */
+.ink-btn {
+  background: var(--ink);
+  color: #f7f2e2;
+  border-radius: 6px;
+  font-family: var(--font-hand);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.25);
+  transition: transform 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease;
+}
+.ink-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.25);
+}
+.ink-btn:active {
+  transform: translateY(1px);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+}
+.ink-btn:disabled {
+  opacity: 0.5;
+}
+
+.ghost-ink-btn {
+  background: transparent;
+  color: var(--ink);
+  border: 1.5px solid rgba(38, 49, 61, 0.4);
+  border-radius: 6px;
+  font-family: var(--font-hand);
+  font-weight: 700;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.ghost-ink-btn:hover {
+  background: rgba(38, 49, 61, 0.07);
+  border-color: rgba(38, 49, 61, 0.65);
+}
+
+/* paper slip (entry sheet inside drawer) */
+.paper-slip {
+  background-color: var(--paper);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.05'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  border-radius: 12px 12px 0 0;
+  box-shadow: 0 -8px 30px rgba(50, 35, 10, 0.3);
+}
+
+/* quick amount chips */
+.chip {
+  border: 1.5px solid rgba(38, 49, 61, 0.35);
+  border-radius: 999px;
+  padding: 0.25rem 0.7rem;
+  font-size: 0.85rem;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.35);
+  transition: all 0.12s ease;
+  white-space: nowrap;
+}
+.chip:hover {
+  background: rgba(38, 49, 61, 0.1);
+  border-color: rgba(38, 49, 61, 0.6);
+}
+
+/* ─── Animations ──────────────────────────────────────────────────────────── */
+
+@keyframes write-in {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-write-in {
+  animation: write-in 0.28s ease-out both;
+}
+
+@keyframes page-turn-next {
+  0% {
+    transform: perspective(1400px) rotateY(0deg);
+    opacity: 1;
+  }
+  35% {
+    transform: perspective(1400px) rotateY(-7deg);
+    transform-origin: left center;
+    opacity: 0.75;
+  }
+  100% {
+    transform: perspective(1400px) rotateY(0deg);
+    opacity: 1;
+  }
+}
+@keyframes page-turn-prev {
+  0% {
+    transform: perspective(1400px) rotateY(0deg);
+    opacity: 1;
+  }
+  35% {
+    transform: perspective(1400px) rotateY(7deg);
+    transform-origin: right center;
+    opacity: 0.75;
+  }
+  100% {
+    transform: perspective(1400px) rotateY(0deg);
+    opacity: 1;
+  }
+}
+.page-turn-next {
+  animation: page-turn-next 0.3s ease-out;
+}
+.page-turn-prev {
+  animation: page-turn-prev 0.3s ease-out;
+}
+
+@keyframes highlight-flash {
+  0%,
+  30% {
+    background-color: rgba(255, 213, 79, 0.65);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+.highlight-flash {
+  animation: highlight-flash 1.6s ease-out both;
+}
+
+@keyframes stamp-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  70% {
+    transform: scale(1.02);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.animate-stamp-in {
+  animation: stamp-in 0.22s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-turn-next,
+  .page-turn-prev,
+  .animate-write-in,
+  .animate-stamp-in,
+  .highlight-flash {
+    animation: none;
+  }
+}
+
+/* ─── Touch & a11y ────────────────────────────────────────────────────────── */
+button, a, input, select, [role='button'] {
+  touch-action: manipulation;
+}
+:focus-visible {
+  outline: 2.5px solid rgba(192, 57, 43, 0.7);
+  outline-offset: 2px;
+}
+
+/* number input: hide spinners for clean ink look */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* date input ink color */
+input[type='date'] {
+  color: var(--ink);
+  font-family: var(--font-body);
+}
+input[type='date']::-webkit-calendar-picker-indicator {
+  opacity: 0.55;
+  cursor: pointer;
+}
+
+/* ─── Bottom nav safe area ────────────────────────────────────────────────── */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* ─── PRINT / PDF — printed traditional register ──────────────────────────── */
+.print-only {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm 10mm;
+  }
+  html, body {
+    background: #fff !important;
+    background-image: none !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+  .paper, .print-sheet {
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+  }
+  .print-register-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'Noto Sans Devanagari', system-ui, sans-serif;
+    color: #1c2630;
+    font-size: 11.5pt;
+  }
+  .print-register-table th {
+    border-bottom: 1.5px solid #1c2630;
+    border-top: 1.5px solid #1c2630;
+    padding: 5px 6px;
+    text-align: left;
+    font-weight: 700;
+  }
+  .print-register-table td {
+    border-bottom: 0.75px solid #9aa7ba;
+    padding: 5px 6px;
+  }
+  .print-register-table td.amt, .print-register-table th.amt {
+    text-align: right;
+  }
+  .print-page-break {
+    page-break-after: always;
+  }
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

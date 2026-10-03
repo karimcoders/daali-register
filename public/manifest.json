@@ -1,0 +1,35 @@
+{
+  "name": "दाली रजिस्टर — Daali Register",
+  "short_name": "दाली",
+  "description": "शादी की दाली की डिजिटल कॉपी — बिना इंटरनेट भी काम करता है।",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ece2c8",
+  "theme_color": "#fbf6e8",
+  "lang": "hi",
+  "dir": "ltr",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
