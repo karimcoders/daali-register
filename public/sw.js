@@ -3,9 +3,12 @@
  *  - Navigations & app code: network-first (fresh code when online), cache fallback (offline)
  *  - Fonts / icons / manifest: cache-first (immutable assets)
  * After the first online visit the whole app works without internet.
+ * Base-path aware: the app can be hosted under a sub-path (GitHub Pages) —
+ * the prefix is derived from the SW registration scope at runtime.
  */
-const CACHE = 'daali-v3';
-const PRECACHE = ['/', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png'];
+const CACHE = 'daali-v4';
+const BP = new URL(self.registration.scope).pathname.replace(/\/$/, ''); // '' or '/daali-register'
+const PRECACHE = [BP + '/', BP + '/manifest.json', BP + '/icons/icon-192.png', BP + '/icons/icon-512.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -25,11 +28,11 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-function isImmutableAsset(url) {
+function isImmutableAsset(pathname) {
   return (
-    url.pathname.startsWith('/fonts/') ||
-    url.pathname.startsWith('/icons/') ||
-    url.pathname === '/favicon.ico'
+    pathname.startsWith(BP + '/fonts/') ||
+    pathname.startsWith(BP + '/icons/') ||
+    pathname === BP + '/favicon.ico'
   );
 }
 
@@ -38,9 +41,11 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
+  // ignore requests outside our scope (e.g. other apps on the same origin)
+  if (BP && !url.pathname.startsWith(BP + '/') && url.pathname !== BP) return;
 
   // Immutable assets → cache first
-  if (isImmutableAsset(url)) {
+  if (isImmutableAsset(url.pathname)) {
     event.respondWith(
       caches.match(req).then(
         (cached) =>
@@ -70,7 +75,7 @@ self.addEventListener('fetch', (event) => {
       .catch(() =>
         caches.match(req).then((cached) => {
           if (cached) return cached;
-          if (req.mode === 'navigate') return caches.match('/');
+          if (req.mode === 'navigate') return caches.match(BP + '/');
           return Response.error();
         })
       )

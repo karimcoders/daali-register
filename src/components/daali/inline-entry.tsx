@@ -9,15 +9,66 @@ import { useEffect, useRef, useState } from 'react';
 import { useDaali } from '@/lib/daali/store';
 import { formatRupees, isoToDisplayDate, normalizeName, sanitizeAmountInput, todayISO } from '@/lib/daali/format';
 import type { DaaliEntry, InputScriptSetting } from '@/lib/daali/types';
+import type { Suggestion } from '@/lib/daali/dict';
 import { useT } from './use-t';
-import { TranslitInput } from './translit-input';
+import { TranslitInput, isIMEComposing, type PickPayload } from './translit-input';
 import { ConfirmDialog } from './ui-bits';
 import { toast } from 'sonner';
 import { Trash2 } from 'lucide-react';
 
+const GRID = 'grid grid-cols-[2rem_1fr_5.2rem] sm:grid-cols-[2.4rem_minmax(0,2fr)_minmax(0,1.35fr)_minmax(0,0.9fr)_6rem_6.2rem]';
+
 export const QUICK_AMOUNTS = [101, 251, 501, 1001, 2001, 5001];
 
-const GRID = 'grid grid-cols-[2rem_1fr_5.2rem] sm:grid-cols-[2.4rem_minmax(0,2fr)_minmax(0,1.35fr)_minmax(0,0.9fr)_6rem_6.2rem]';
+type SugField = 'name' | 'village' | 'relation';
+
+function useSuggest() {
+  const [sug, setSug] = useState<Suggestion[]>([]);
+  const [sugField, setSugField] = useState<SugField>('name');
+  const [pick, setPick] = useState<PickPayload | null>(null);
+  const seq = useRef(0);
+  const wire = (field: SugField) => ({
+    onSuggest: (s: Suggestion[]) => {
+      setSug(s);
+      if (s.length) setSugField(field);
+    },
+    pick: sugField === field ? pick : null,
+  });
+  const choose = (sgn: Suggestion) => {
+    seq.current += 1;
+    setPick({ roman: sgn.roman, text: sgn.text, seq: seq.current });
+    setSug([]);
+  };
+  return { sug, wire, choose, clear: () => setSug([]) };
+}
+
+// dictionary suggestion chips — tap to write the word perfectly
+function SuggestionChips({
+  sug,
+  onChoose,
+}: {
+  sug: Suggestion[];
+  onChoose: (s: Suggestion) => void;
+}) {
+  if (!sug.length) return null;
+  return (
+    <div className="col-span-full flex flex-wrap items-center gap-1 pb-1 pt-0.5">
+      <span className="mr-0.5 text-[11px] text-ink-soft/60">✎</span>
+      {sug.map((sgn) => (
+        <button
+          key={sgn.roman}
+          type="button"
+          className="chip h-8 px-2.5 text-[14px]"
+          onMouseDown={(e) => e.preventDefault()}
+          onTouchStart={(e) => e.preventDefault()}
+          onClick={() => onChoose(sgn)}
+        >
+          {sgn.text}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 // quick ₹ chips — shown only while the line is active
 function QuickAmounts({
@@ -69,6 +120,7 @@ export function WritingRow({
   const allEntries = useDaali((s) => s.allEntries);
   const currentEventId = useDaali((s) => s.currentEventId);
   const addEntry = useDaali((s) => s.addEntry);
+  const { sug, wire, choose, clear } = useSuggest();
 
   const [active, setActive] = useState(false);
   const [name, setName] = useState('');
@@ -132,6 +184,7 @@ export function WritingRow({
     setNameErr('');
     setAmountErr('');
     setDup(null);
+    clear();
   };
 
   const doCommit = async (force = false) => {
@@ -224,6 +277,7 @@ export function WritingRow({
         <div className="flex items-center gap-1">
           <TranslitInput
             ref={nameRef}
+            {...wire('name')}
             className="cell-input text-[15px] font-semibold"
             placeholder={t('namePh')}
             value={name}
@@ -255,6 +309,7 @@ export function WritingRow({
         <div className="mt-0.5 flex gap-2 sm:hidden">
           <TranslitInput
             ref={villageMobileRef}
+            {...wire('village')}
             className="cell-input min-w-0 flex-1 text-[13px] text-ink-soft"
             placeholder={t('villagePh')}
             value={village}
@@ -276,6 +331,7 @@ export function WritingRow({
           />
           <TranslitInput
             ref={relationMobileRef}
+            {...wire('relation')}
             className="cell-input min-w-0 flex-1 text-[13px] text-ink-soft"
             placeholder={t('relationPh')}
             value={relationship}
@@ -299,6 +355,7 @@ export function WritingRow({
       <div className="hidden min-w-0 px-0.5 sm:block">
         <TranslitInput
           ref={villageDesktopRef}
+          {...wire('village')}
           className="cell-input text-sm"
           placeholder={t('villagePh')}
           value={village}
@@ -324,6 +381,7 @@ export function WritingRow({
       <div className="hidden min-w-0 px-0.5 sm:block">
         <TranslitInput
           ref={relationDesktopRef}
+          {...wire('relation')}
           className="cell-input text-sm"
           placeholder={t('relationPh')}
           value={relationship}
@@ -362,6 +420,7 @@ export function WritingRow({
               setAmountErr('');
             }}
             onKeyDown={(e) => {
+              if (isIMEComposing(e)) return;
               if (e.key === 'Enter') {
                 e.preventDefault();
                 doCommit();
@@ -385,6 +444,7 @@ export function WritingRow({
           aria-label={t('date')}
           onChange={(e) => setDate(e.target.value)}
           onKeyDown={(e) => {
+            if (isIMEComposing(e)) return;
             if (e.key === 'Enter') {
               e.preventDefault();
               doCommit();
@@ -415,6 +475,8 @@ export function WritingRow({
             </button>
           </div>
         </div>
+      ) : sug.length > 0 ? (
+        <SuggestionChips sug={sug} onChoose={choose} />
       ) : (
         <QuickAmounts
           amountRaw={amountRaw}
@@ -445,6 +507,7 @@ export function EntryEditRow({
   const allEntries = useDaali((s) => s.allEntries);
   const updateEntry = useDaali((s) => s.updateEntry);
   const removeEntry = useDaali((s) => s.removeEntry);
+  const { sug, wire, choose } = useSuggest();
 
   const [name, setName] = useState(entry.name);
   const [nameRaw, setNameRaw] = useState(entry.nameLatin || '');
@@ -540,6 +603,7 @@ export function EntryEditRow({
         <div className="flex items-center gap-1">
           <TranslitInput
             ref={nameRef}
+            {...wire('name')}
             className="cell-input text-[15px] font-semibold"
             placeholder={t('namePh')}
             value={name}
@@ -570,6 +634,7 @@ export function EntryEditRow({
         <div className="mt-0.5 flex gap-2 sm:hidden">
           <TranslitInput
             ref={villageMobileRef}
+            {...wire('village')}
             className="cell-input min-w-0 flex-1 text-[13px] text-ink-soft"
             placeholder={t('villagePh')}
             value={village}
@@ -643,6 +708,7 @@ export function EntryEditRow({
               setAmountErr('');
             }}
             onKeyDown={(e) => {
+              if (isIMEComposing(e)) return;
               if (e.key === 'Enter') {
                 e.preventDefault();
                 doSave();
@@ -665,6 +731,7 @@ export function EntryEditRow({
           aria-label={t('date')}
           onChange={(e) => setDate(e.target.value)}
           onKeyDown={(e) => {
+            if (isIMEComposing(e)) return;
             if (e.key === 'Enter') {
               e.preventDefault();
               doSave();
@@ -673,6 +740,9 @@ export function EntryEditRow({
           }}
         />
       </div>
+
+      {/* dictionary suggestions while editing */}
+      {sug.length > 0 && <SuggestionChips sug={sug} onChoose={choose} />}
 
       {/* नोट + actions */}
       <div className="col-span-full flex flex-wrap items-center gap-1.5 pb-1.5 pt-0.5">
@@ -685,6 +755,7 @@ export function EntryEditRow({
           aria-label={t('note')}
           onChange={(e) => setNote(e.target.value)}
           onKeyDown={(e) => {
+            if (isIMEComposing(e)) return;
             if (e.key === 'Enter') {
               e.preventDefault();
               doSave();
