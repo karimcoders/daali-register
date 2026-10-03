@@ -74,3 +74,9 @@ export function downloadFile(content: string, filename: string, mime: string): v
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
+
+/** True when the text contains Arabic-script characters (Urdu) — used to
+ *  pick the Nastaliq font for displaying mixed-script register rows. */
+export function isArabicText(t: string): boolean {
+  return /[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFC]/.test(t);
+}

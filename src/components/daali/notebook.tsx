@@ -9,7 +9,7 @@ import {
   useState,
 } from 'react';
 import { useDaali, sortEntries } from '@/lib/daali/store';
-import { formatNumber, formatRupees, isoToDisplayDate } from '@/lib/daali/format';
+import { formatNumber, formatRupees, isoToDisplayDate, isArabicText } from '@/lib/daali/format';
 import type { DaaliEntry } from '@/lib/daali/types';
 import { useT } from './use-t';
 import { WritingRow, EntryEditRow } from './inline-entry';
@@ -480,7 +480,7 @@ function RegisterRow({
     >
       <div className="text-center text-[13px] text-ink-soft">{String(serial).padStart(2, '0')}</div>
       <div className="min-w-0 px-0.5 py-1">
-        <div className="truncate font-semibold leading-tight">
+        <div className={`truncate font-semibold leading-tight ${isArabicText(entry.name) ? 'urdu-text' : ''}`}>
           {entry.name}
           {entry.note && (
             <span className="ml-1 text-xs text-ink-soft" title={entry.note}>
@@ -488,12 +488,12 @@ function RegisterRow({
             </span>
           )}
         </div>
-        <div className="truncate text-xs leading-tight text-ink-soft sm:hidden">
+        <div className={`truncate text-xs leading-tight text-ink-soft sm:hidden ${isArabicText(entry.village) || isArabicText(entry.relationship) ? 'urdu-text' : ''}`}>
           {[entry.village, entry.relationship].filter(Boolean).join(' • ') || '\u00A0'}
         </div>
       </div>
-      <div className="hidden min-w-0 truncate px-0.5 text-sm sm:block">{entry.village || '—'}</div>
-      <div className="hidden min-w-0 truncate px-0.5 text-sm sm:block">{entry.relationship || '—'}</div>
+      <div className={`hidden min-w-0 truncate px-0.5 text-sm sm:block ${isArabicText(entry.village) ? 'urdu-text' : ''}`}>{entry.village || '—'}</div>
+      <div className={`hidden min-w-0 truncate px-0.5 text-sm sm:block ${isArabicText(entry.relationship) ? 'urdu-text' : ''}`}>{entry.relationship || '—'}</div>
       <div className="px-0.5 text-end font-bold tabular-nums" style={{ fontVariantNumeric: 'tabular-nums' }}>
         {formatRupees(entry.amount)}
       </div>

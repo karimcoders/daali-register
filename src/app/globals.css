@@ -543,6 +543,17 @@ input[type='date']::-webkit-calendar-picker-indicator {
 [dir='rtl'] .ruled-row {
   min-height: 58px;
 }
+/* Nastaliq for Urdu WRITING even when the UI language is हिंदी/English:
+   the input announces its script via data-script (set by TranslitInput) */
+input[data-script='ur'] {
+  font-family: var(--font-urdu);
+  line-height: 1.9;
+}
+/* display cells whose content is Arabic-script (detected at render) */
+.urdu-text {
+  font-family: var(--font-urdu);
+  line-height: 1.9;
+}
 @media (min-width: 640px) {
   [dir='rtl'] .ruled-row {
     min-height: 62px;

@@ -177,6 +177,7 @@ export const TranslitInput = forwardRef<HTMLInputElement, TranslitInputProps>(
       <input
         ref={ref}
         {...rest}
+        data-script={script}
         value={value}
         onChange={handleChange}
         onKeyDown={handleKeyDown}

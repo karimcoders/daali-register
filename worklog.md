@@ -50,3 +50,24 @@ Work Log:
 Stage Summary:
 - All three feedback items shipped: (1) Hindi+Urdu typing now works on any keyboard via offline transliteration, (2) हिंदी/اردو/English for both UI and writing incl. full RTL Urdu notebook, (3) popup form removed — click a line, write, Enter → next line, exactly like a paper daali.
 - Deliverable: same single-route PWA (src/app/page.tsx), still zero backend, data model backward-compatible (latin fields optional).
+
+---
+Task ID: 3
+Agent: Super Z (main agent)
+Task: User feedback round 2 — (1) "hindi sahi naam nahi likh raha / urdu bhi sahi karo" → fix transliteration quality; (2) push to GitHub (token provided, user karimcoders) and put the app on a permanent live link with data storage.
+
+Work Log:
+- Transliteration engine rewritten (src/lib/daali/translit.ts) + new curated dictionary (src/lib/daali/dict.ts, ~450 Bihar-context words: relations, surnames, first names, villages/districts, everyday words — each with Devanagari AND Urdu).
+- Root causes fixed: old engine halanted ALL consonant clusters (ramji→राम्जी) and marked every single 'a' as ा (yadav→यादाव). New rules: dict-first lookup; halant only for whitelisted conjunct clusters (pr/kr/tr/shr/rm…); a+n+stop collapses into anusvara (sanjay→संजय, chandan→चंदन); final a+n drops (kishan→किशन, roshan→रोशन); a before C+vowel drops in 5+-token words (mahesh→महेश, manoj→मनोज); a before final y drops (vijay→विजय); ngh→ंह (singh fallback); final i/u lengthening kept; Urdu rules: first-syllable a→alif, other medial a dropped, final a→alif, final u→و.
+- Added tap-to-pick dictionary suggestion chips: TranslitInput emits live suggestions (suggestFor prefix search), WritingRow/EntryEditRow render paper-style chips in the line's strip; picking replaces the trailing latin word (mirror keeps roman for search).
+- IME-composition safety (fixes real Hindi/Urdu keyboards, e.g. Google Indic): isIMEComposing(e) checks nativeEvent.isComposing/keyCode 229; TranslitInput hands off ALL keys during composition; plain amount/date/note Enter handlers guarded too — Enter during composition no longer jumps lines / breaks IME commit.
+- Urdu display fix: Nastaliq was only applied under [dir=rtl] (UI language), so Urdu script mode with Hindi UI rendered wrong font. Now: TranslitInput sets data-script attr → input[data-script='ur'] gets Nastaliq; committed rows with Arabic-script text get .urdu-text class via isArabicText() helper.
+- dict QA tooling: scripts/test-translit.ts (187 assertions passing), test-dict-scan.ts (catches Devanagari chars inside Urdu strings — found+fixed mandal/roshan/roushan/kailash/prakash), test-bidi.ts, fix-dict.py (codepoint-surgical fixes).
+- Static export for GitHub Pages: removed scaffold api route; next.config conditional output:'export' + basePath + separate distDir (.next-static) so the running dev server is untouched; @font-face moved from globals.css into font-faces.tsx component with build-time NEXT_PUBLIC_BASE_PATH prefix; manifest.json + layout metadata + SW registration basePath-aware; sw.js rewritten to derive prefix from registration.scope (cache daali-v4) with scope guard.
+- GitHub: created repo karimcoders/daali-register (token auth), pushed main (source) — repo: https://github.com/karimcoders/daali-register
+- Deploy: added .github/workflows/deploy.yml (static export → actions/deploy-pages), enabled Pages via API (build_type=workflow) → LIVE: https://karimcoders.github.io/daali-register/ (first deploy succeeded in ~1 min).
+- E2E verified with agent-browser on BOTH dev and live site: create register → type "sanjay" → suggestion chip संजय appears → tap → फटाफट Enter flow through village/relation/amount → commit → totals exact → next line auto-focused; direct Devanagari paste passes through untouched; Urdu mode input renders Nastaliq; live-site entry (sanjay/madhubani→मधुबनी) committed; reload persistence; OFFLINE (network cut): live site fully reloads via SW + new entry committed offline (कुल 2, ₹752) → back online data intact; fonts confirmed loaded (Kalam/Nastaliq/Devanagari). Lint 0 problems, tsc clean (src).
+
+Stage Summary:
+- Hindi/Urdu writing quality fixed via dictionary + schwa-aware rules + suggestion chips + IME guards; Urdu gets proper Nastaliq rendering in all UI languages.
+- Permanent live link: https://karimcoders.github.io/daali-register/ (GitHub Pages, auto-deploys on push to main). Data: offline-first IndexedDB on device + JSON/CSV backup in app. Vercel not used (needs account login) — Pages serves the same static build; repo is Vercel-import-ready.
