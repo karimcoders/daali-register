@@ -91,3 +91,22 @@ Stage Summary:
 - नेवता/सामान entries (kapda, mithai, gift…) cash दाली ke saath ek hi register mein; totals cash alag, सामान count alag.
 - Register ki ab koi bhi line/cell par click karke waise hi edit hota hai jaise pen se likhte hain; khali line par click = agli dali likhna.
 - Live: https://karimcoders.github.io/daali-register/ • Repo: https://github.com/karimcoders/daali-register
+
+---
+Task ID: 5
+Agent: Super Z (main agent)
+Task: User asked "aal chkro a to z tu khud se" — full A-to-Z self-audit of every feature on the LIVE site (https://karimcoders.github.io/daali-register/), fresh browser session, mobile 375px + desktop 1280px.
+
+Work Log:
+- Repo state check: PDF-fix commits (7e8b927, d35dbd9) were already on remote; sandbox file-mode noise normalized (core.fileMode off), pushed system commit d65fa4c; confirmed Actions deploys success for all heads.
+- LIVE A-Z audit via agent-browser (26 checkpoints, all PASS):
+  A home/empty-state paper UI • B create register inline (no popup) • C authentic daali look (शुभ लाभ-style header, red margin, ruled lines, पन्ना number) • D tap ruled line → inputs appear ON the line • E Hindi transliteration (sanjay kumar→संजय कुमार) • F Enter commits → next line auto-focus (फटाफट) • G quick ₹ chips (101–5,001) • H live totals exact (कुल लोग 2 • कुल दाली ₹1,502) • I pen-style cell edit: click ₹501 cell → cursor lands on that numeric cell → 2500 → totals ₹3,501 live • J नेवता/सामान mode (सुनीता देवी 🎁 item; cash totals exclude items, सामान counted separately) • K duplicate warning non-blocking dashed note [नहीं][फिर भी लिखें] (fires at row-commit; नहीं keeps row open for correction — by design) • L pagination: auto page-turn when page fills, arrows, jump spinbutton • M delete confirm "क्या यह दाली हटानी है?" → totals recomputed exactly (8 • ₹4,756) • N search roman "sunita" → finds सुनीता देवी via latin mirror → jump + yellow flash highlight • O Urdu UI: dir=rtl, lang=ur, Noto Nastaliq Urdu confirmed via computed styles, margin/nav mirrored, Urdu transliteration mohan→موہن committed live • P English UI LTR complete • Q PDF: instrumented URL.createObjectURL + anchor hooks → real download event, blob 192,675 B application/pdf, header bytes %PDF-1.3, deterministic ×3 exports, zero errors (note: earlier "no download" was test-harness error — PDF button is icon-only aria-label, not text) • R JSON backup 3,770 B • S reload persistence IndexedDB (home card "9 people ₹5,007") • T CSV 1,327 B utf-8 • U OFFLINE: network cut → full SW reload → entry written offline → totals live (10 • ₹5,107) → back online persisted • V no horizontal scroll 375px & 1280px • W 0 console errors whole session • X fonts loaded (Kalam, Noto Sans Devanagari; Nastaliq on-demand) • Y settings sheet (language/script/backup/print) all wired • Z ＋ nav jumps to writing line (used offline too).
+- Audit found 1 real quality bug: transliteration "kapda"→"कापदा" (dict miss) — exactly the class of error the user had complained about.
+- FIX: +55 curated नेवता/सामान gift-item words in src/lib/daali/dict.ts (kapda/kapde/kapre, mithai, saree, lehnga, shagun, bartan, kangan, ghadi, sona, chandi, ghee, mewa, cycle, pankha, nevta, saman, gift…), plus names-section payal spelling upgraded to पायल. Caught and fixed 2 of my own script-contamination typos via scripts/test-dict-scan.ts (Devanagari II inside Urdu strings, Arabic lam inside Devanagari) — scanner proves its worth.
+- QA after fix: dict-scan CLEAN, test-translit 179/0, Urdu spot 8/0, bidi OK, eslint 0 problems, tsc src clean. bun -e spot-check: kapda→कपड़ा/کپڑا, mithai→मिठाई/مٹھائی, nevta→नेवता/نیوتا.
+- Deploy: commit 371f53e pushed → Actions success → LIVE re-verified: typed kapda in Nevta mode on live site → कपड़ा correct, सीता 🎁कपड़ा committed, totals ₹5,107 cash + सामान: 2 exact.
+
+Stage Summary:
+- Full A-Z audit: 26/26 PASS on the live permanent link, including real PDF file download (validated %PDF header + byte size) and offline write.
+- One dict-quality bug found & fixed & deployed & re-verified live (kapda→कपड़ा).
+- Live: https://karimcoders.github.io/daali-register/ • Repo: https://github.com/karimcoders/daali-register
