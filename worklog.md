@@ -110,3 +110,27 @@ Stage Summary:
 - Full A-Z audit: 26/26 PASS on the live permanent link, including real PDF file download (validated %PDF header + byte size) and offline write.
 - One dict-quality bug found & fixed & deployed & re-verified live (kapda→कपड़ा).
 - Live: https://karimcoders.github.io/daali-register/ • Repo: https://github.com/karimcoders/daali-register
+
+---
+Task ID: 6
+Agent: Super Z (main agent)
+Task: User round 4 — (1) "pdf crop ho rah" → fix PDF cropping; (2) clicking anywhere on ANY page must open editing (page 2, 3…); (3) "jo bhi edit hoga wo save hoga, history maintain ho" → full edit-history feature.
+
+Work Log:
+- REPRODUCED the PDF crop from the user's exact environment: seeded a 22-entry register into the live site's IndexedDB, exported, pulled the actual PDF bytes out of the browser (blob → base64 → local file), rendered with pdftoppm. Found it: page-2 footer "कुल लोग: 22 • कुल दाली: ₹19,998 • नेवता/सामान: 5" — the last digit was HALF-CLIPPED at the right page edge (flex row + overflow:hidden; totals text couldn't wrap).
+- FIX (src/lib/daali/pdf.ts): footer rebuilt as block layout — grand total on its own wrapping line (whiteSpace:normal + overflowWrap:break-word, right-aligned/RTL-aware), पन्ना number on a separate small line. Verified with the same extraction pipeline on dev (fixpg/fx PNGs) and on live (lv2-foot.png): complete "5", safe margins, 2-sheet export clean.
+- EDIT HISTORY FEATURE:
+  - db.ts: DB_VERSION 1→2, new 'history' object store (indexes eventId, at) with backward-compatible upgrade.
+  - types.ts: HistoryItem/HistoryChange/HistoryAction (add/edit/delete/renameEvent/deleteEvent, field diffs with from→to).
+  - store.ts: pushHistory best-effort logger (never blocks data writes; capped at 600 in memory), entryChanges diff (name/village/relation/amount/item/date/note), wired into addEntry/updateEntry/removeEntry/renameEvent/deleteEvent (deleteEvent purges its history), importBackup + resetAll clear history, new clearHistory action.
+  - history-sheet.tsx (new): paper-slip drawer, day-grouped list (आज/कल/date), colored action rows (green add/amber edit/red delete) with time, change lines "रकम: ₹501 → ₹2,500" (amounts ₹-formatted, dates localized, <bdi> for RTL), event-name chip on home view, empty state, clear-history with ConfirmDialog. Fixed initial invisible-drawer bug: used `paper` class whose position:relative broke vaul's fixed positioning — switched to paper-slip like the other sheets.
+  - Entry points: notebook ⋮ menu "हिस्ट्री देखें" (History icon) + Settings row. Strings added in hi/ur/en (22 keys). SW cache → daali-v6.
+- PAGE-2 EDITING VERIFIED (dev + live): jump to page 2 → click row → inline edit opens with values → amount change committed → totals exact (₹19,998−1,313+2,000=₹20,685 dev; ₹29,164 live). Click-to-edit works on every page, not just page 1.
+- E2E verified dev + live: add/edit/delete all produce history records; history persists across reload (IDB v2 upgrade on existing DBs works); PDF blob 412,589 B (2 sheets, 23 entries) exports clean on live; 0 console errors.
+- Deploy: commit 147129f → Actions success → live re-verified end-to-end.
+
+Stage Summary:
+- PDF ka crop theek: totals/footer kabhi nahi katenge (wrap + block layout), live PDFs visually verified.
+- हिस्ट्री feature: har daali ka add/edit/delete (raash ₹501→₹2,500 jaisi detail ke saath) apne aap save hota hai; ⋮ menu ya Settings se khulti hai; clear option bhi.
+- Har page par click-to-edit confirmed.
+- Live: https://karimcoders.github.io/daali-register/ • Repo: https://github.com/karimcoders/daali-register
