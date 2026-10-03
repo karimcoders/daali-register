@@ -4,6 +4,7 @@
 // snapshots each sheet with html2canvas and assembles a jsPDF document.
 'use client';
 
+import type { jsPDF } from 'jspdf';
 import type { DaaliEntry, DaaliEvent, Language } from './types';
 import {
   backupStamp,
@@ -320,12 +321,61 @@ function buildSheet(opts: {
   return page;
 }
 
+/** how the PDF reached the user — 'saved' = anchor download, 'shared' = share sheet, 'opened' = new tab */
+export type PdfSaveResult = { how: 'shared' | 'saved' | 'opened'; url: string; filename: string };
+
+/**
+ * Mobile-safe PDF save — pdf.save() alone fails silently in many phone
+ * browsers (in-app webviews ignore the download attribute; older iOS cannot
+ * save blobs). Chain: share sheet → anchor download → open in a new tab.
+ * The blob URL stays alive for 2 minutes so the fallback toast link works.
+ */
+async function savePdfFile(pdf: jsPDF, filename: string): Promise<PdfSaveResult> {
+  const blob = pdf.output('blob');
+  const url = URL.createObjectURL(blob);
+  setTimeout(() => URL.revokeObjectURL(url), 120_000);
+
+  // 1) share sheet (phones) — "फ़ाइलों में सेव करें", WhatsApp, Gmail, प्रिंट…
+  try {
+    const file = new File([blob], filename, { type: 'application/pdf' });
+    const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
+    const coarsePointer = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
+    if (coarsePointer && typeof nav.share === 'function' && nav.canShare?.({ files: [file] })) {
+      await nav.share({ files: [file], title: filename });
+      return { how: 'shared', url, filename };
+    }
+  } catch (err) {
+    if ((err as DOMException | undefined)?.name === 'AbortError') {
+      // user closed the share sheet — fall through and download the file anyway
+    } else {
+      // share unavailable/failed — fall through to the classic download
+    }
+  }
+
+  // 2) classic anchor download (desktop browsers, Android Chrome…)
+  try {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.rel = 'noopener';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    return { how: 'saved', url, filename };
+  } catch {
+    // 3) last resort — open the PDF; user saves it from the viewer
+    window.open(url, '_blank');
+    return { how: 'opened', url, filename };
+  }
+}
+
 export async function downloadRegisterPdf(
   event: DaaliEvent,
   entries: DaaliEntry[],
   lang: Language,
   onProgress?: (done: number, total: number) => void
-): Promise<void> {
+): Promise<PdfSaveResult> {
   const [{ jsPDF }, html2canvasMod] = await Promise.all([import('jspdf'), import('html2canvas')]);
   const html2canvas = html2canvasMod.default;
   const t = makeT(lang);
@@ -390,7 +440,7 @@ export async function downloadRegisterPdf(
       .trim()
       .replace(/\s+/g, '-')
       .slice(0, 40);
-    pdf.save(`daali-${safeName}-${backupStamp()}.pdf`);
+    return await savePdfFile(pdf, `daali-${safeName}-${backupStamp()}.pdf`);
   } finally {
     container.remove();
     restoreComputedStyle();

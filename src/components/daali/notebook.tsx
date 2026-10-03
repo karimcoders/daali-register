@@ -20,6 +20,7 @@ import {
 import type { DaaliEntry } from '@/lib/daali/types';
 import { useT } from './use-t';
 import { WritingRow, EntryEditRow, type EditCell } from './inline-entry';
+import { toast } from 'sonner';
 import {
   ChevronLeft,
   ChevronRight,
@@ -66,6 +67,79 @@ interface NotebookProps {
   onHistory: () => void;
 }
 
+// ─── शीर्षक की जानकारी — tap करो, वहीं pen चल जाती है (कोई popup नहीं) ─────────
+function HeaderField({
+  value,
+  display,
+  onSave,
+  type = 'text',
+  ariaLabel,
+}: {
+  value: string;
+  /** what the paper shows (e.g. formatted date) — defaults to value */
+  display?: string;
+  onSave: (v: string) => void;
+  type?: 'text' | 'date';
+  ariaLabel: string;
+}) {
+  const t = useT();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+
+  const start = () => {
+    setDraft(value);
+    setEditing(true);
+  };
+  const commit = () => {
+    setEditing(false);
+    const v = draft.trim();
+    if (v !== value) onSave(v);
+  };
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        type={type}
+        value={draft}
+        aria-label={ariaLabel}
+        className="cell-input !w-auto max-w-full rounded font-hand text-base font-bold"
+        style={{ minWidth: type === 'date' ? '9.5rem' : '4ch' }}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            commit();
+          }
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            setEditing(false);
+          }
+        }}
+      />
+    );
+  }
+  return (
+    <span
+      className="paper-blank cursor-text font-hand font-bold decoration-ink/25 underline-offset-4 hover:underline"
+      role="button"
+      tabIndex={0}
+      title={t('headerEditHint')}
+      aria-label={`${ariaLabel}: ${display ?? value}`}
+      onClick={start}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          start();
+        }
+      }}
+    >
+      {display ?? (value || '\u00A0')}
+    </span>
+  );
+}
+
 export function Notebook({ onRenameEvent, onDeleteEvent, onPrint, onPdf, onHistory }: NotebookProps) {
   const t = useT();
   const events = useDaali((s) => s.events);
@@ -77,6 +151,7 @@ export function Notebook({ onRenameEvent, onDeleteEvent, onPrint, onPdf, onHisto
   const highlightId = useDaali((s) => s.highlightId);
   const settings = useDaali((s) => s.settings);
   const setInputScript = useDaali((s) => s.setInputScript);
+  const updateEvent = useDaali((s) => s.updateEvent);
 
   const rowsPerPage = useRowsPerPage();
   const [flip, setFlip] = useState<'next' | 'prev' | null>(null);
@@ -86,6 +161,23 @@ export function Notebook({ onRenameEvent, onDeleteEvent, onPrint, onPdf, onHisto
   const touch = useRef<{ x: number; y: number } | null>(null);
   const [editing, setEditing] = useState<{ id: string; cell: EditCell } | null>(null);
   const [writeSignal, setWriteSignal] = useState(0);
+  // pehli baar ek chhota hint — "kahin bhi tap karke likh/sudhar sakte ho"
+  const [showHint, setShowHint] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return !window.localStorage.getItem('daali-edit-hint-v1');
+    } catch {
+      return false;
+    }
+  });
+  const dismissHint = () => {
+    setShowHint(false);
+    try {
+      window.localStorage.setItem('daali-edit-hint-v1', '1');
+    } catch {
+      /* ignore */
+    }
+  };
 
   const event = events.find((e) => e.id === currentEventId);
 
@@ -296,6 +388,17 @@ export function Notebook({ onRenameEvent, onDeleteEvent, onPrint, onPdf, onHisto
         </DropdownMenu>
       </div>
 
+      {/* ── tap-to-edit hint (first visit only) ── */}
+      {showHint && (
+        <div className="no-print mx-2 mt-1 flex items-center gap-2 rounded-md border border-dashed border-ink/30 bg-[var(--paper-2)] px-3 py-1.5 sm:mx-6">
+          <Pencil className="h-4 w-4 shrink-0 text-margin-red" aria-hidden="true" />
+          <p className="min-w-0 flex-1 text-[12.5px] leading-snug text-ink-soft">{t('editHint')}</p>
+          <button type="button" className="chip h-7 shrink-0 px-2 text-[12px]" onClick={dismissHint}>
+            {t('editHintOk')}
+          </button>
+        </div>
+      )}
+
       {/* ── scrollable register area ── */}
       <div
         className="no-print flex flex-1 items-start justify-center overflow-y-auto px-2 py-2 sm:px-6 sm:py-3"
@@ -324,18 +427,39 @@ export function Notebook({ onRenameEvent, onDeleteEvent, onPrint, onPdf, onHisto
             <div className="mt-2 text-[15px] leading-7 sm:mt-3">
               <div className="text-ink">
                 <span className="text-ink-soft">{t('eventLabel')}: </span>
-                <span className="paper-blank font-hand font-bold">{event.name || '\u00A0'}</span>
+                <HeaderField
+                  value={event.name}
+                  ariaLabel={t('eventLabel')}
+                  onSave={(v) => {
+                    updateEvent(event.id, { name: v });
+                    toast.success(t('updatedToast'), { duration: 1200 });
+                  }}
+                />
               </div>
               <div className="mt-0.5 grid grid-cols-1 gap-x-6 sm:grid-cols-2">
                 <div className="text-start sm:text-end">
                   <span className="text-ink-soft">{t('dateLabel')}: </span>
-                  <span className="paper-blank font-hand font-bold">
-                    {event.date ? isoToDisplayDate(event.date) : '\u00A0'}
-                  </span>
+                  <HeaderField
+                    type="date"
+                    value={event.date}
+                    display={event.date ? isoToDisplayDate(event.date) : ''}
+                    ariaLabel={t('dateLabel')}
+                    onSave={(v) => {
+                      updateEvent(event.id, { date: v });
+                      toast.success(t('updatedToast'), { duration: 1200 });
+                    }}
+                  />
                 </div>
                 <div className="text-start">
                   <span className="text-ink-soft">{t('villageLabel')}: </span>
-                  <span className="paper-blank font-hand font-bold">{event.location || '\u00A0'}</span>
+                  <HeaderField
+                    value={event.location}
+                    ariaLabel={t('villageLabel')}
+                    onSave={(v) => {
+                      updateEvent(event.id, { location: v });
+                      toast.success(t('updatedToast'), { duration: 1200 });
+                    }}
+                  />
                 </div>
               </div>
             </div>
@@ -529,7 +653,33 @@ function RegisterRow({
           )}
         </div>
         <div className={`truncate text-xs leading-tight text-ink-soft sm:hidden ${isArabicText(entry.village) || isArabicText(entry.relationship) ? 'urdu-text' : ''}`}>
-          {[entry.village, entry.relationship].filter(Boolean).join(' • ') || '\u00A0'}
+          {/* गाँव/रिश्ता अलग-अलग tap — jaise copy mein kisi bhi word par pen rakhte hain */}
+          {entry.village ? (
+            <span
+              role="button"
+              className="active:text-ink"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEditCell('village');
+              }}
+            >
+              {entry.village}
+            </span>
+          ) : null}
+          {entry.village && entry.relationship ? ' • ' : ''}
+          {entry.relationship ? (
+            <span
+              role="button"
+              className="active:text-ink"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEditCell('relation');
+              }}
+            >
+              {entry.relationship}
+            </span>
+          ) : null}
+          {!entry.village && !entry.relationship ? '\u00A0' : ''}
         </div>
       </div>
       <div

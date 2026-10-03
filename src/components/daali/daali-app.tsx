@@ -69,7 +69,7 @@ export function DaaliApp() {
     }, 250);
   }, [view, printing]);
 
-  // real .pdf file download — seedha download ho jata hai, print dialog nahi aata
+  // real .pdf file download — mobile-safe: share sheet → download → नई विंडो
   const handlePdf = useCallback(async () => {
     if (view !== 'notebook' || pdfBusy || !currentEventId) return;
     const event = events.find((e) => e.id === currentEventId);
@@ -81,8 +81,23 @@ export function DaaliApp() {
         allEntries.filter((e) => e.eventId === currentEventId),
         settings.sortMode
       );
-      await downloadRegisterPdf(event, entries, settings.language);
-      toast.success(t('pdfDone'), { duration: 2500 });
+      const res = await downloadRegisterPdf(event, entries, settings.language);
+      if (res.how === 'shared') {
+        // share sheet se user ne file save/share kar li
+        toast.success(t('pdfDone'), { duration: 2500 });
+      } else if (res.how === 'saved') {
+        // link 2 minute tak zinda hai — agar download na dikhe to tap karke PDF khul jayegi
+        toast.success(t('pdfDone'), {
+          duration: 12000,
+          description: t('pdfTapOpen'),
+          action: {
+            label: t('pdfOpen'),
+            onClick: () => window.open(res.url, '_blank'),
+          },
+        });
+      } else {
+        toast.info(t('pdfOpenedTab'), { duration: 8000 });
+      }
     } catch (err) {
       if (typeof window !== 'undefined') {
         (window as unknown as { __pdfError?: string }).__pdfError = String(

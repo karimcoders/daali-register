@@ -110,6 +110,7 @@ interface DaaliState {
 
   createEvent: (name: string, date: string, location: string) => Promise<string>;
   renameEvent: (id: string, name: string) => Promise<void>;
+  updateEvent: (id: string, patch: { name?: string; date?: string; location?: string }) => Promise<void>;
   deleteEvent: (id: string) => Promise<void>;
 
   openEvent: (id: string) => void;
@@ -303,6 +304,41 @@ export const useDaali = create<DaaliState>((set, get) => {
         name: old?.name || ev.name,
         action: 'renameEvent',
         changes: old && old.name !== ev.name ? [{ field: 'eventName', from: old.name, to: ev.name }] : [],
+      });
+    }
+  },
+
+  // शीर्षक/तारीख़/गाँव — register page par seedha tap karke badla ja sakta hai
+  updateEvent: async (id, patch) => {
+    const old = get().events.find((e) => e.id === id);
+    if (!old) return;
+    const next = {
+      name: (patch.name !== undefined ? patch.name.trim() : old.name),
+      date: (patch.date !== undefined ? patch.date : old.date),
+      location: (patch.location !== undefined ? patch.location.trim() : old.location),
+    };
+    const changes: HistoryChange[] = [];
+    if (old.name !== next.name) changes.push({ field: 'eventName', from: old.name, to: next.name });
+    if (old.date !== next.date) changes.push({ field: 'date', from: old.date, to: next.date });
+    if (old.location !== next.location) changes.push({ field: 'location', from: old.location, to: next.location });
+    if (changes.length === 0) return;
+    const events = get().events.map((e) =>
+      e.id === id ? { ...e, ...next, updatedAt: Date.now() } : e
+    );
+    set({ events });
+    const ev = events.find((e) => e.id === id);
+    if (ev) {
+      try {
+        await idbPut(STORE_EVENTS, ev);
+      } catch {
+        /* in-memory only */
+      }
+      pushHistory({
+        eventId: id,
+        refId: 'event',
+        name: next.name,
+        action: 'editEvent',
+        changes,
       });
     }
   },

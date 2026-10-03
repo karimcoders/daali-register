@@ -650,22 +650,29 @@ export function EntryEditRow({
   // cursor starts on the tapped cell — jaise pen wahi rakha ho
   useEffect(() => {
     const tm = setTimeout(() => {
+      // hidden mobile/desktop twins exist in DOM — only focus the VISIBLE one
+      const pickVisible = (...els: Array<HTMLInputElement | null>): HTMLInputElement | null =>
+        els.find((x) => x && x.offsetParent !== null) || null;
+      let target: HTMLInputElement | null = null;
       switch (focusCell) {
         case 'amount':
-          amountRef.current?.focus();
+          target = pickVisible(amountRef.current);
           break;
         case 'date':
-          dateRef.current?.focus();
+          target = pickVisible(dateRef.current);
           break;
         case 'village':
-          focusFirstVisible(villageMobileRef.current, villageDesktopRef.current);
+          target = pickVisible(villageMobileRef.current, villageDesktopRef.current);
           break;
         case 'relation':
-          focusFirstVisible(relationMobileRef.current, relationDesktopRef.current);
+          target = pickVisible(relationMobileRef.current, relationDesktopRef.current);
           break;
         default:
-          nameRef.current?.focus();
+          target = pickVisible(nameRef.current);
       }
+      // keyboard aane par line chhup na jaye — poori line nazar mein rakho
+      target?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+      target?.focus();
     }, 40);
     return () => clearTimeout(tm);
   }, []);
@@ -777,8 +784,15 @@ export function EntryEditRow({
               setVillage(v);
               setVillageRaw(v);
             }}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                onDone();
+              }
+            }}
           />
           <TranslitInput
+            ref={relationMobileRef}
             className="cell-input min-w-0 flex-1 text-[13px] text-ink-soft"
             placeholder={t('relationPh')}
             value={relationship}
@@ -787,12 +801,19 @@ export function EntryEditRow({
             aria-label={t('relation')}
             script={script}
             onValueChange={setRelationship}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                onDone();
+              }
+            }}
           />
         </div>
       </div>
 
       <div className="hidden min-w-0 px-0.5 sm:block">
         <TranslitInput
+          ref={villageDesktopRef}
           className="cell-input text-sm"
           placeholder={t('villagePh')}
           value={village}
@@ -804,11 +825,18 @@ export function EntryEditRow({
             setVillage(v);
             setVillageRaw(v);
           }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              onDone();
+            }
+          }}
         />
       </div>
 
       <div className="hidden min-w-0 px-0.5 sm:block">
         <TranslitInput
+          ref={relationDesktopRef}
           className="cell-input text-sm"
           placeholder={t('relationPh')}
           value={relationship}
@@ -817,6 +845,12 @@ export function EntryEditRow({
           aria-label={t('relation')}
           script={script}
           onValueChange={setRelationship}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              onDone();
+            }
+          }}
         />
       </div>
 

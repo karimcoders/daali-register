@@ -508,6 +508,15 @@ input[type='date']::-webkit-calendar-picker-indicator {
   box-shadow: 0 1.5px 0 rgba(192, 57, 43, 0.45);
 }
 
+/* iOS Safari zooms the whole page when a focused input's font is <16px —
+   phone par likhte samay page zoom ho jana "edit kharab hai" jaisa lagta hai.
+   Saare inline writing inputs ko mobile par 16px rakho (layout almost same). */
+@media (max-width: 639.98px) {
+  .cell-input {
+    font-size: 16px;
+  }
+}
+
 /* register rows padding — logical, so the red margin side flips in RTL */
 .register-rows {
   padding-inline-start: 3.9rem;
