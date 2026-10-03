@@ -134,3 +134,36 @@ Stage Summary:
 - हिस्ट्री feature: har daali ka add/edit/delete (raash ₹501→₹2,500 jaisi detail ke saath) apne aap save hota hai; ⋮ menu ya Settings se khulti hai; clear option bhi.
 - Har page par click-to-edit confirmed.
 - Live: https://karimcoders.github.io/daali-register/ • Repo: https://github.com/karimcoders/daali-register
+
+---
+Task ID: 7
+Agent: Super Z (main agent)
+Task: User round 5 — "still nhi horah pdf downado sah se br yaar + edit bhi sahi nh ho rah" — PDF download still failing on user's phone; editing still not right. Deep root-cause hunt + fixes + live verification.
+
+Work Log:
+- ROOT CAUSES FOUND (real bugs, not test noise):
+  1. PDF: downloadRegisterPdf used jsPDF pdf.save() → anchor download only. Fails silently on mobile webviews (WhatsApp/Instagram in-app browsers ignore the download attribute) and older iOS → user never gets the file.
+  2. EDIT: EntryEditRow village/relation inputs were MISSING their refs (relationMobileRef/villageDesktopRef/relationDesktopRef never attached) → tapping गाँव/रिश्ता cells opened the edit row but nothing focused (verified live: zero focused inputs). Plus my first patch using `??` still picked hidden twins — fixed with offsetParent visibility pick (pickVisible).
+  3. Notebook header (कार्यक्रम/तारीख़/गाँव) was NOT tappable — user naturally taps it to correct; nothing happened.
+  4. iOS zoom: inline inputs <16px trigger page auto-zoom on focus → "edit kharab lagta hai".
+  5. Escape key didn't close the edit row from village/relation fields.
+- FIXES:
+  - pdf.ts: savePdfFile() chain — mobile share sheet (navigator.canShare({files}) → share) → anchor download → window.open fallback; blob URL kept alive 2 min; returns {how: shared|saved|opened}.
+  - daali-app.tsx: 'saved' now shows 12s toast with description "फ़ाइल नहीं मिली? यहाँ टैप करके PDF खोलें।" + खोलें action (opens the live blob PDF — bulletproof in webviews).
+  - inline-entry.tsx: refs attached to all 4 missing inputs; pickVisible() focus; scrollIntoView({block:'center'}) so the keyboard never hides the edited line; Escape closes from every field.
+  - notebook.tsx: HeaderField component — tap कार्यक्रम/तारीख़/गाँव on the page → inline input right there (Enter/blur saves, Esc cancels, date formatted display); RegisterRow mobile village • relation split into per-field tap spans; first-visit dismissible hint strip "किसी भी लाइन, नाम या तारीख़ पर टैप कीजिए…" (localStorage daali-edit-hint-v1).
+  - store.ts: new updateEvent(id, {name?,date?,location?}) with field-diff history (action 'editEvent'); types.ts + strings.ts (hi/ur/en: pdfOpen, pdfTapOpen, pdfOpenedTab, editHint, editHintOk, headerEditHint, actEditEvent, fLocation); history-sheet maps location + editEvent.
+  - globals.css: mobile cell-input 16px (kills iOS focus zoom). sw.js → daali-v7.
+- QA (dev + live):
+  - Dev E2E: village/relation/amount cell taps all focus correctly (FOCUSED:गाँव/रिश्ता/रकम with values), amount 501→2000 saves (₹4,500), header name+date inline edits save (राम जी की शादी, 15/11/2026), history shows all 5 records incl. ₹501→₹2,000 and रजिस्टर का नाम diff, persists across reload.
+  - Mobile 375px: village/relation span taps focus the visible mobile inputs; cell-input computes 16px; hint strip visible.
+  - Urdu RTL: dir=rtl, header tap-edit focused with Urdu label.
+  - PDF: dev + live export → anchor download event, %PDF-1.3, 142–145 KB, pdftoppm render shows complete page (totals कुल लोग: 2 • कुल दाली: ₹3,001 fully visible, no crop), fallback toast with खोलें verified visible.
+  - Suites: dict-scan CLEAN, translit pass, bidi pass, eslint 0 problems, tsc src clean, 0 console errors.
+- Deploy: commit c3faa29 → Actions success → LIVE verified end-to-end (SW daali-v7 live; bundle contains all new strings + canShare chain; mobile E2E: create→write→edit→PDF→history all pass).
+
+Stage Summary:
+- PDF ab phone par bhi pakka: share sheet (Save to Files/WhatsApp/Gmail) → download → नई विंडो, aur agar file na mile to toast mein "खोलें" tap link.
+- Edit: गाँव/रिश्ता/रकम/नाम/तारीख़ — sab cells par tap kaam karta hai, cursor wahi pen ki tarah rakha jata hai; page header (कार्यक्रम/तारीख़/गाँव) bhi ab seedha tap karke sudhara ja sakta hai.
+- Har badlav history mein: header edits bhi (रजिस्टर की जानकारी बदली) detail ke saath.
+- Live: https://karimcoders.github.io/daali-register/ • Repo: https://github.com/karimcoders/daali-register (commit c3faa29)
