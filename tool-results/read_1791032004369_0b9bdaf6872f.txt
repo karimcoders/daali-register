@@ -1,0 +1,830 @@
+     1→     1→'use client';
+     2→     2→
+     3→     3→// ─── Writing directly on the register lines — no popup, jaise asli copy ─────
+     4→     4→// WritingRow : the next empty ruled line. Tap it → inputs appear ON the line.
+     5→     5→//              Enter → दाली लिख जाती है and the next line is ready (फटाफट).
+     6→     6→// EntryEditRow : tap a written line → same inline editing in place.
+     7→     7→
+     8→     8→import { useEffect, useRef, useState } from 'react';
+     9→     9→import { useDaali } from '@/lib/daali/store';
+    10→    10→import { formatRupees, isoToDisplayDate, normalizeName, sanitizeAmountInput, todayISO } from '@/lib/daali/format';
+    11→    11→import type { DaaliEntry, InputScriptSetting } from '@/lib/daali/types';
+    12→    12→import type { Suggestion } from '@/lib/daali/dict';
+    13→    13→import { useT } from './use-t';
+    14→    14→import { TranslitInput, isIMEComposing, type PickPayload } from './translit-input';
+    15→    15→import { ConfirmDialog } from './ui-bits';
+    16→    16→import { toast } from 'sonner';
+    17→    17→import { Trash2 } from 'lucide-react';
+    18→    18→
+    19→    19→const GRID = 'grid grid-cols-[2rem_1fr_5.2rem] sm:grid-cols-[2.4rem_minmax(0,2fr)_minmax(0,1.35fr)_minmax(0,0.9fr)_6rem_6.2rem]';
+    20→    20→
+    21→    21→export const QUICK_AMOUNTS = [101, 251, 501, 1001, 2001, 5001];
+    22→    22→
+    23→    23→type SugField = 'name' | 'village' | 'relation';
+    24→    24→
+    25→    25→function useSuggest() {
+    26→    26→  const [sug, setSug] = useState<Suggestion[]>([]);
+    27→    27→  const [sugField, setSugField] = useState<SugField>('name');
+    28→    28→  const [pick, setPick] = useState<PickPayload | null>(null);
+    29→    29→  const seq = useRef(0);
+    30→    30→  const wire = (field: SugField) => ({
+    31→    31→    onSuggest: (s: Suggestion[]) => {
+    32→    32→      setSug(s);
+    33→    33→      if (s.length) setSugField(field);
+    34→    34→    },
+    35→    35→    pick: sugField === field ? pick : null,
+    36→    36→  });
+    37→    37→  const choose = (sgn: Suggestion) => {
+    38→    38→    seq.current += 1;
+    39→    39→    setPick({ roman: sgn.roman, text: sgn.text, seq: seq.current });
+    40→    40→    setSug([]);
+    41→    41→  };
+    42→    42→  return { sug, wire, choose, clear: () => setSug([]) };
+    43→    43→}
+    44→    44→
+    45→    45→// dictionary suggestion chips — tap to write the word perfectly
+    46→    46→function SuggestionChips({
+    47→    47→  sug,
+    48→    48→  onChoose,
+    49→    49→}: {
+    50→    50→  sug: Suggestion[];
+    51→    51→  onChoose: (s: Suggestion) => void;
+    52→    52→}) {
+    53→    53→  if (!sug.length) return null;
+    54→    54→  return (
+    55→    55→    <div className="col-span-full flex flex-wrap items-center gap-1 pb-1 pt-0.5">
+    56→    56→      <span className="mr-0.5 text-[11px] text-ink-soft/60">✎</span>
+    57→    57→      {sug.map((sgn) => (
+    58→    58→        <button
+    59→    59→          key={sgn.roman}
+    60→    60→          type="button"
+    61→    61→          className="chip h-8 px-2.5 text-[14px]"
+    62→    62→          onMouseDown={(e) => e.preventDefault()}
+    63→    63→          onTouchStart={(e) => e.preventDefault()}
+    64→    64→          onClick={() => onChoose(sgn)}
+    65→    65→        >
+    66→    66→          {sgn.text}
+    67→    67→        </button>
+    68→    68→      ))}
+    69→    69→    </div>
+    70→    70→  );
+    71→    71→}
+    72→    72→
+    73→    73→// quick ₹ chips — shown only while the line is active
+    74→    74→function QuickAmounts({
+    75→    75→  amountRaw,
+    76→    76→  onPick,
+    77→    77→}: {
+    78→    78→  amountRaw: string;
+    79→    79→  onPick: (n: number) => void;
+    80→    80→}) {
+    81→    81→  const amountNum = parseInt(amountRaw || '0', 10) || 0;
+    82→    82→  return (
+    83→    83→    <div className="col-span-full flex flex-wrap items-center gap-1 pb-1 pt-0.5">
+    84→    84→      {QUICK_AMOUNTS.map((q) => (
+    85→    85→        <button
+    86→    86→          key={q}
+    87→    87→          type="button"
+    88→    88→          className={`chip h-8 min-w-[3.1rem] px-2 text-[13px] ${String(q) === amountRaw ? '!border-margin-red !bg-margin-red/10 font-bold' : ''}`}
+    89→    89→          onClick={() => onPick(q)}
+    90→    90→          aria-label={formatRupees(q)}
+    91→    91→        >
+    92→    92→          {formatRupees(q)}
+    93→    93→        </button>
+    94→    94→      ))}
+    95→    95→      {amountNum > 0 && (
+    96→    96→        <span className="ml-auto font-hand text-lg font-bold text-ink">{formatRupees(amountNum)}</span>
+    97→    97→      )}
+    98→    98→    </div>
+    99→    99→  );
+   100→   100→}
+   101→   101→
+   102→   102→function FieldError({ msg }: { msg: string }) {
+   103→   103→  if (!msg) return null;
+   104→   104→  return <span className="text-xs text-margin-red">{msg}</span>;
+   105→   105→}
+   106→   106→
+   107→   107→// ─── the next empty line — writing happens here ─────────────────────────────
+   108→   108→export function WritingRow({
+   109→   109→  serial,
+   110→   110→  script,
+   111→   111→  focusSignal,
+   112→   112→  onCommitted,
+   113→   113→}: {
+   114→   114→  serial: number;
+   115→   115→  script: InputScriptSetting;
+   116→   116→  focusSignal: number;
+   117→   117→  onCommitted: () => void;
+   118→   118→}) {
+   119→   119→  const t = useT();
+   120→   120→  const allEntries = useDaali((s) => s.allEntries);
+   121→   121→  const currentEventId = useDaali((s) => s.currentEventId);
+   122→   122→  const addEntry = useDaali((s) => s.addEntry);
+   123→   123→  const { sug, wire, choose, clear } = useSuggest();
+   124→   124→
+   125→   125→  const [active, setActive] = useState(false);
+   126→   126→  const [name, setName] = useState('');
+   127→   127→  const [nameRaw, setNameRaw] = useState('');
+   128→   128→  const [village, setVillage] = useState('');
+   129→   129→  const [villageRaw, setVillageRaw] = useState('');
+   130→   130→  const [relationship, setRelationship] = useState('');
+   131→   131→  const [amountRaw, setAmountRaw] = useState('');
+   132→   132→  const [date, setDate] = useState(todayISO());
+   133→   133→  const [nameErr, setNameErr] = useState('');
+   134→   134→  const [amountErr, setAmountErr] = useState('');
+   135→   135→  const [dup, setDup] = useState<string | null>(null);
+   136→   136→  const [busy, setBusy] = useState(false);
+   137→   137→
+   138→   138→  const nameRef = useRef<HTMLInputElement>(null);
+   139→   139→  const villageMobileRef = useRef<HTMLInputElement>(null);
+   140→   140→  const villageDesktopRef = useRef<HTMLInputElement>(null);
+   141→   141→  const relationMobileRef = useRef<HTMLInputElement>(null);
+   142→   142→  const relationDesktopRef = useRef<HTMLInputElement>(null);
+   143→   143→  const amountRef = useRef<HTMLInputElement>(null);
+   144→   144→
+   145→   145→  // focus the input that is actually visible (mobile vs desktop grids)
+   146→   146→  const focusFirstVisible = (...els: Array<HTMLInputElement | null>) => {
+   147→   147→    const el = els.find((x) => x && x.offsetParent !== null);
+   148→   148→    el?.focus();
+   149→   149→  };
+   150→   150→  const focusVillage = () => focusFirstVisible(villageMobileRef.current, villageDesktopRef.current);
+   151→   151→  const focusRelation = () => focusFirstVisible(relationMobileRef.current, relationDesktopRef.current);
+   152→   152→
+   153→   153→  // ＋ button / page-advance asks this line to start writing.
+   154→   154→  // Only reacts to signal CHANGES (not the value at mount) so that flipping
+   155→   155→  // pages never pops the keyboard by itself.
+   156→   156→  const initialSignal = useRef(focusSignal);
+   157→   157→  useEffect(() => {
+   158→   158→    if (focusSignal === initialSignal.current) return;
+   159→   159→    initialSignal.current = focusSignal;
+   160→   160→    setActive(true);
+   161→   161→    const tm = setTimeout(() => nameRef.current?.focus(), 60);
+   162→   162→    return () => clearTimeout(tm);
+   163→   163→  }, [focusSignal]);
+   164→   164→
+   165→   165→  const amountNum = parseInt(amountRaw || '0', 10) || 0;
+   166→   166→
+   167→   167→  const findDuplicate = () =>
+   168→   168→    allEntries.find(
+   169→   169→      (e) =>
+   170→   170→        e.eventId === currentEventId &&
+   171→   171→        e.name.trim() !== '' &&
+   172→   172→        (normalizeName(e.name) === normalizeName(name) ||
+   173→   173→          (!!nameRaw && !!e.nameLatin && normalizeName(e.nameLatin) === normalizeName(nameRaw)))
+   174→   174→    );
+   175→   175→
+   176→   176→  const reset = () => {
+   177→   177→    setName('');
+   178→   178→    setNameRaw('');
+   179→   179→    setVillage('');
+   180→   180→    setVillageRaw('');
+   181→   181→    setRelationship('');
+   182→   182→    setAmountRaw('');
+   183→   183→    setDate(todayISO());
+   184→   184→    setNameErr('');
+   185→   185→    setAmountErr('');
+   186→   186→    setDup(null);
+   187→   187→    clear();
+   188→   188→  };
+   189→   189→
+   190→   190→  const doCommit = async (force = false) => {
+   191→   191→    if (busy) return;
+   192→   192→    const nm = name.trim();
+   193→   193→    let ok = true;
+   194→   194→    if (!nm) {
+   195→   195→      setNameErr(t('nameRequired'));
+   196→   196→      ok = false;
+   197→   197→    } else setNameErr('');
+   198→   198→    if (amountNum <= 0) {
+   199→   199→      setAmountErr(t('amountRequired'));
+   200→   200→      ok = false;
+   201→   201→    } else setAmountErr('');
+   202→   202→    if (!ok) {
+   203→   203→      (nm ? amountRef : nameRef).current?.focus();
+   204→   204→      return;
+   205→   205→    }
+   206→   206→    // duplicate — never blocks, just asks once (paper-note style)
+   207→   207→    if (!force && findDuplicate()) {
+   208→   208→      setDup(nm);
+   209→   209→      return;
+   210→   210→    }
+   211→   211→    setDup(null);
+   212→   212→    setBusy(true);
+   213→   213→    try {
+   214→   214→      await addEntry({
+   215→   215→        name: nm,
+   216→   216→        village,
+   217→   217→        relationship,
+   218→   218→        amount: amountNum,
+   219→   219→        date,
+   220→   220→        note: '',
+   221→   221→        nameLatin: nameRaw !== nm ? nameRaw : '',
+   222→   222→        villageLatin: villageRaw !== village ? villageRaw : '',
+   223→   223→      });
+   224→   224→      // फटाफट — the next line is ready immediately
+   225→   225→      reset();
+   226→   226→      onCommitted();
+   227→   227→      setTimeout(() => nameRef.current?.focus(), 60);
+   228→   228→    } catch {
+   229→   229→      toast.error(t('saveError'));
+   230→   230→    } finally {
+   231→   231→      setBusy(false);
+   232→   232→    }
+   233→   233→  };
+   234→   234→
+   235→   235→  const cancelLine = () => {
+   236→   236→    reset();
+   237→   237→    setActive(false);
+   238→   238→  };
+   239→   239→
+   240→   240→  // ── inactive: a quiet empty ruled line with a faint ✎ ──
+   241→   241→  if (!active) {
+   242→   242→    return (
+   243→   243→      <div
+   244→   244→        className={`ruled-row ${GRID} cursor-text items-center hover:bg-ink/[0.035]`}
+   245→   245→        onClick={() => {
+   246→   246→          setActive(true);
+   247→   247→          setTimeout(() => nameRef.current?.focus(), 40);
+   248→   248→        }}
+   249→   249→        role="button"
+   250→   250→        tabIndex={0}
+   251→   251→        aria-label={t('writeHere')}
+   252→   252→        onKeyDown={(e) => {
+   253→   253→          if (e.key === 'Enter' || e.key === ' ') {
+   254→   254→            e.preventDefault();
+   255→   255→            setActive(true);
+   256→   256→            setTimeout(() => nameRef.current?.focus(), 40);
+   257→   257→          }
+   258→   258→        }}
+   259→   259→      >
+   260→   260→        <div className="text-center text-[13px] text-ink-soft/70">{String(serial).padStart(2, '0')}</div>
+   261→   261→        <div className="min-w-0 select-none px-0.5 text-[15px] text-ink-soft/40">✎ {t('writeHere')}</div>
+   262→   262→        <div className="hidden sm:block" />
+   263→   263→        <div className="hidden sm:block" />
+   264→   264→        <div />
+   265→   265→        <div className="hidden sm:block" />
+   266→   266→      </div>
+   267→   267→    );
+   268→   268→  }
+   269→   269→
+   270→   270→  // ── active: write ON the line ──
+   271→   271→  return (
+   272→   272→    <div className={`ruled-row ${GRID} items-center bg-ink/[0.03]`}>
+   273→   273→      <div className="text-center text-[13px] text-ink-soft">{String(serial).padStart(2, '0')}</div>
+   274→   274→
+   275→   275→      {/* नाम (+ mobile mini-line for गाँव / रिश्ता) */}
+   276→   276→      <div className="min-w-0 px-0.5 py-1">
+   277→   277→        <div className="flex items-center gap-1">
+   278→   278→          <TranslitInput
+   279→   279→            ref={nameRef}
+   280→   280→            {...wire('name')}
+   281→   281→            className="cell-input text-[15px] font-semibold"
+   282→   282→            placeholder={t('namePh')}
+   283→   283→            value={name}
+   284→   284→            maxLength={60}
+   285→   285→            autoComplete="off"
+   286→   286→            enterKeyHint="next"
+   287→   287→            aria-label={t('name')}
+   288→   288→            script={script}
+   289→   289→            onValueChange={(v) => {
+   290→   290→              setName(v);
+   291→   291→              setNameErr('');
+   292→   292→            }}
+   293→   293→            onRawChange={setNameRaw}
+   294→   294→            onKeyDown={(e, fv) => {
+   295→   295→              if (e.key === 'Enter') {
+   296→   296→                e.preventDefault();
+   297→   297→                if (fv !== undefined) setName(fv);
+   298→   298→                focusVillage();
+   299→   299→              }
+   300→   300→              if (e.key === 'Escape') {
+   301→   301→                e.preventDefault();
+   302→   302→                cancelLine();
+   303→   303→              }
+   304→   304→            }}
+   305→   305→          />
+   306→   306→          <FieldError msg={nameErr} />
+   307→   307→        </div>
+   308→   308→        {/* mobile: गाँव + रिश्ता on the second small line */}
+   309→   309→        <div className="mt-0.5 flex gap-2 sm:hidden">
+   310→   310→          <TranslitInput
+   311→   311→            ref={villageMobileRef}
+   312→   312→            {...wire('village')}
+   313→   313→            className="cell-input min-w-0 flex-1 text-[13px] text-ink-soft"
+   314→   314→            placeholder={t('villagePh')}
+   315→   315→            value={village}
+   316→   316→            maxLength={40}
+   317→   317→            autoComplete="off"
+   318→   318→            aria-label={t('village')}
+   319→   319→            script={script}
+   320→   320→            onValueChange={(v) => {
+   321→   321→              setVillage(v);
+   322→   322→              setVillageRaw(v);
+   323→   323→            }}
+   324→   324→            onKeyDown={(e) => {
+   325→   325→              if (e.key === 'Enter') {
+   326→   326→                e.preventDefault();
+   327→   327→                focusRelation();
+   328→   328→              }
+   329→   329→              if (e.key === 'Escape') cancelLine();
+   330→   330→            }}
+   331→   331→          />
+   332→   332→          <TranslitInput
+   333→   333→            ref={relationMobileRef}
+   334→   334→            {...wire('relation')}
+   335→   335→            className="cell-input min-w-0 flex-1 text-[13px] text-ink-soft"
+   336→   336→            placeholder={t('relationPh')}
+   337→   337→            value={relationship}
+   338→   338→            maxLength={40}
+   339→   339→            autoComplete="off"
+   340→   340→            aria-label={t('relation')}
+   341→   341→            script={script}
+   342→   342→            onValueChange={setRelationship}
+   343→   343→            onKeyDown={(e) => {
+   344→   344→              if (e.key === 'Enter') {
+   345→   345→                e.preventDefault();
+   346→   346→                amountRef.current?.focus();
+   347→   347→              }
+   348→   348→              if (e.key === 'Escape') cancelLine();
+   349→   349→            }}
+   350→   350→          />
+   351→   351→        </div>
+   352→   352→      </div>
+   353→   353→
+   354→   354→      {/* desktop: गाँव */}
+   355→   355→      <div className="hidden min-w-0 px-0.5 sm:block">
+   356→   356→        <TranslitInput
+   357→   357→          ref={villageDesktopRef}
+   358→   358→          {...wire('village')}
+   359→   359→          className="cell-input text-sm"
+   360→   360→          placeholder={t('villagePh')}
+   361→   361→          value={village}
+   362→   362→          maxLength={40}
+   363→   363→          autoComplete="off"
+   364→   364→          aria-label={t('village')}
+   365→   365→          script={script}
+   366→   366→          onValueChange={(v) => {
+   367→   367→            setVillage(v);
+   368→   368→            setVillageRaw(v);
+   369→   369→          }}
+   370→   370→          onKeyDown={(e) => {
+   371→   371→            if (e.key === 'Enter') {
+   372→   372→              e.preventDefault();
+   373→   373→              focusRelation();
+   374→   374→            }
+   375→   375→            if (e.key === 'Escape') cancelLine();
+   376→   376→          }}
+   377→   377→        />
+   378→   378→      </div>
+   379→   379→
+   380→   380→      {/* desktop: रिश्ता */}
+   381→   381→      <div className="hidden min-w-0 px-0.5 sm:block">
+   382→   382→        <TranslitInput
+   383→   383→          ref={relationDesktopRef}
+   384→   384→          {...wire('relation')}
+   385→   385→          className="cell-input text-sm"
+   386→   386→          placeholder={t('relationPh')}
+   387→   387→          value={relationship}
+   388→   388→          maxLength={40}
+   389→   389→          autoComplete="off"
+   390→   390→          aria-label={t('relation')}
+   391→   391→          script={script}
+   392→   392→          onValueChange={setRelationship}
+   393→   393→          onKeyDown={(e) => {
+   394→   394→            if (e.key === 'Enter') {
+   395→   395→              e.preventDefault();
+   396→   396→              amountRef.current?.focus();
+   397→   397→            }
+   398→   398→            if (e.key === 'Escape') cancelLine();
+   399→   399→          }}
+   400→   400→        />
+   401→   401→      </div>
+   402→   402→
+   403→   403→      {/* रकम */}
+   404→   404→      <div className="px-0.5">
+   405→   405→        <div className="flex items-center justify-end gap-0.5">
+   406→   406→          <span className="font-hand text-base font-bold text-ink-soft">₹</span>
+   407→   407→          <input
+   408→   408→            ref={amountRef}
+   409→   409→            className="cell-input w-full text-right text-[15px] font-bold tabular-nums"
+   410→   410→            style={{ fontVariantNumeric: 'tabular-nums' }}
+   411→   411→            inputMode="numeric"
+   412→   412→            pattern="[0-9]*"
+   413→   413→            autoComplete="off"
+   414→   414→            placeholder="0"
+   415→   415→            value={amountRaw}
+   416→   416→            enterKeyHint="done"
+   417→   417→            aria-label={t('amount')}
+   418→   418→            onChange={(e) => {
+   419→   419→              setAmountRaw(sanitizeAmountInput(e.target.value));
+   420→   420→              setAmountErr('');
+   421→   421→            }}
+   422→   422→            onKeyDown={(e) => {
+   423→   423→              if (isIMEComposing(e)) return;
+   424→   424→              if (e.key === 'Enter') {
+   425→   425→                e.preventDefault();
+   426→   426→                doCommit();
+   427→   427→              }
+   428→   428→              if (e.key === 'Escape') {
+   429→   429→                e.preventDefault();
+   430→   430→                cancelLine();
+   431→   431→              }
+   432→   432→            }}
+   433→   433→          />
+   434→   434→          <FieldError msg={amountErr} />
+   435→   435→        </div>
+   436→   436→      </div>
+   437→   437→
+   438→   438→      {/* desktop: तारीख */}
+   439→   439→      <div className="hidden px-0.5 sm:block">
+   440→   440→        <input
+   441→   441→          type="date"
+   442→   442→          className="cell-input text-right text-xs text-ink-soft"
+   443→   443→          value={date}
+   444→   444→          aria-label={t('date')}
+   445→   445→          onChange={(e) => setDate(e.target.value)}
+   446→   446→          onKeyDown={(e) => {
+   447→   447→            if (isIMEComposing(e)) return;
+   448→   448→            if (e.key === 'Enter') {
+   449→   449→              e.preventDefault();
+   450→   450→              doCommit();
+   451→   451→            }
+   452→   452→            if (e.key === 'Escape') cancelLine();
+   453→   453→          }}
+   454→   454→        />
+   455→   455→      </div>
+   456→   456→
+   457→   457→      {/* quick ₹ chips + duplicate note — only while writing */}
+   458→   458→      {dup ? (
+   459→   459→        <div className="col-span-full animate-stamp-in rounded-md border-2 border-dashed border-margin-red/60 bg-margin-red/5 px-3 py-2">
+   460→   460→          <p className="text-sm text-ink">
+   461→   461→            {t('duplicateWarning')} <span className="font-hand font-bold">{dup}</span>
+   462→   462→          </p>
+   463→   463→          <div className="mt-1.5 flex gap-2">
+   464→   464→            <button
+   465→   465→              className="ghost-ink-btn h-9 flex-1 text-base"
+   466→   466→              onClick={() => {
+   467→   467→                setDup(null);
+   468→   468→                nameRef.current?.focus();
+   469→   469→              }}
+   470→   470→            >
+   471→   471→              {t('no')}
+   472→   472→            </button>
+   473→   473→            <button className="ink-btn h-9 flex-1 text-base" onClick={() => doCommit(true)}>
+   474→   474→              {t('writeAnyway')}
+   475→   475→            </button>
+   476→   476→          </div>
+   477→   477→        </div>
+   478→   478→      ) : sug.length > 0 ? (
+   479→   479→        <SuggestionChips sug={sug} onChoose={choose} />
+   480→   480→      ) : (
+   481→   481→        <QuickAmounts
+   482→   482→          amountRaw={amountRaw}
+   483→   483→          onPick={(q) => {
+   484→   484→            setAmountRaw(String(q));
+   485→   485→            setAmountErr('');
+   486→   486→            nameRef.current?.focus();
+   487→   487→          }}
+   488→   488→        />
+   489→   489→      )}
+   490→   490→    </div>
+   491→   491→  );
+   492→   492→}
+   493→   493→
+   494→   494→// ─── tap a written line → edit it right there ────────────────────────────────
+   495→   495→export function EntryEditRow({
+   496→   496→  entry,
+   497→   497→  serial,
+   498→   498→  script,
+   499→   499→  onDone,
+   500→   500→}: {
+   501→   501→  entry: DaaliEntry;
+   502→   502→  serial: number;
+   503→   503→  script: InputScriptSetting;
+   504→   504→  onDone: () => void;
+   505→   505→}) {
+   506→   506→  const t = useT();
+   507→   507→  const allEntries = useDaali((s) => s.allEntries);
+   508→   508→  const updateEntry = useDaali((s) => s.updateEntry);
+   509→   509→  const removeEntry = useDaali((s) => s.removeEntry);
+   510→   510→  const { sug, wire, choose } = useSuggest();
+   511→   511→
+   512→   512→  const [name, setName] = useState(entry.name);
+   513→   513→  const [nameRaw, setNameRaw] = useState(entry.nameLatin || '');
+   514→   514→  const [village, setVillage] = useState(entry.village);
+   515→   515→  const [villageRaw, setVillageRaw] = useState(entry.villageLatin || '');
+   516→   516→  const [relationship, setRelationship] = useState(entry.relationship);
+   517→   517→  const [amountRaw, setAmountRaw] = useState(entry.amount ? String(entry.amount) : '');
+   518→   518→  const [date, setDate] = useState(entry.date || todayISO());
+   519→   519→  const [note, setNote] = useState(entry.note);
+   520→   520→  const [nameErr, setNameErr] = useState('');
+   521→   521→  const [amountErr, setAmountErr] = useState('');
+   522→   522→  const [dup, setDup] = useState<string | null>(null);
+   523→   523→  const [confirmDelete, setConfirmDelete] = useState(false);
+   524→   524→  const [busy, setBusy] = useState(false);
+   525→   525→
+   526→   526→  const nameRef = useRef<HTMLInputElement>(null);
+   527→   527→  const villageMobileRef = useRef<HTMLInputElement>(null);
+   528→   528→  const villageDesktopRef = useRef<HTMLInputElement>(null);
+   529→   529→  const relationMobileRef = useRef<HTMLInputElement>(null);
+   530→   530→  const relationDesktopRef = useRef<HTMLInputElement>(null);
+   531→   531→  const amountRef = useRef<HTMLInputElement>(null);
+   532→   532→
+   533→   533→  const focusFirstVisible = (...els: Array<HTMLInputElement | null>) => {
+   534→   534→    const el = els.find((x) => x && x.offsetParent !== null);
+   535→   535→    el?.focus();
+   536→   536→  };
+   537→   537→  const focusAmount = () => focusFirstVisible(amountRef.current);
+   538→   538→
+   539→   539→  useEffect(() => {
+   540→   540→    const tm = setTimeout(() => nameRef.current?.focus(), 40);
+   541→   541→    return () => clearTimeout(tm);
+   542→   542→  }, []);
+   543→   543→
+   544→   544→  const amountNum = parseInt(amountRaw || '0', 10) || 0;
+   545→   545→
+   546→   546→  const findDuplicate = () =>
+   547→   547→    allEntries.find(
+   548→   548→      (e) =>
+   549→   549→        e.id !== entry.id &&
+   550→   550→        e.eventId === entry.eventId &&
+   551→   551→        e.name.trim() !== '' &&
+   552→   552→        (normalizeName(e.name) === normalizeName(name) ||
+   553→   553→          (!!nameRaw && !!e.nameLatin && normalizeName(e.nameLatin) === normalizeName(nameRaw)))
+   554→   554→    );
+   555→   555→
+   556→   556→  const doSave = async (force = false) => {
+   557→   557→    if (busy) return;
+   558→   558→    const nm = name.trim();
+   559→   559→    let ok = true;
+   560→   560→    if (!nm) {
+   561→   561→      setNameErr(t('nameRequired'));
+   562→   562→      ok = false;
+   563→   563→    } else setNameErr('');
+   564→   564→    if (amountNum <= 0) {
+   565→   565→      setAmountErr(t('amountRequired'));
+   566→   566→      ok = false;
+   567→   567→    } else setAmountErr('');
+   568→   568→    if (!ok) {
+   569→   569→      (nm ? amountRef : nameRef).current?.focus();
+   570→   570→      return;
+   571→   571→    }
+   572→   572→    if (!force && findDuplicate()) {
+   573→   573→      setDup(nm);
+   574→   574→      return;
+   575→   575→    }
+   576→   576→    setDup(null);
+   577→   577→    setBusy(true);
+   578→   578→    try {
+   579→   579→      await updateEntry(entry.id, {
+   580→   580→        name: nm,
+   581→   581→        village,
+   582→   582→        relationship,
+   583→   583→        amount: amountNum,
+   584→   584→        date,
+   585→   585→        note,
+   586→   586→        nameLatin: nameRaw !== nm ? nameRaw : '',
+   587→   587→        villageLatin: villageRaw !== village ? villageRaw : '',
+   588→   588→      });
+   589→   589→      toast.success(t('updatedToast'), { duration: 1500 });
+   590→   590→      onDone();
+   591→   591→    } catch {
+   592→   592→      toast.error(t('saveError'));
+   593→   593→    } finally {
+   594→   594→      setBusy(false);
+   595→   595→    }
+   596→   596→  };
+   597→   597→
+   598→   598→  return (
+   599→   599→    <div className={`ruled-row ${GRID} items-center bg-ink/[0.04]`}>
+   600→   600→      <div className="text-center text-[13px] text-ink-soft">{String(serial).padStart(2, '0')}</div>
+   601→   601→
+   602→   602→      <div className="min-w-0 px-0.5 py-1">
+   603→   603→        <div className="flex items-center gap-1">
+   604→   604→          <TranslitInput
+   605→   605→            ref={nameRef}
+   606→   606→            {...wire('name')}
+   607→   607→            className="cell-input text-[15px] font-semibold"
+   608→   608→            placeholder={t('namePh')}
+   609→   609→            value={name}
+   610→   610→            maxLength={60}
+   611→   611→            autoComplete="off"
+   612→   612→            aria-label={t('name')}
+   613→   613→            script={script}
+   614→   614→            onValueChange={(v) => {
+   615→   615→              setName(v);
+   616→   616→              setNameErr('');
+   617→   617→            }}
+   618→   618→            onRawChange={setNameRaw}
+   619→   619→            onKeyDown={(e, fv) => {
+   620→   620→              if (e.key === 'Enter') {
+   621→   621→                e.preventDefault();
+   622→   622→                if (fv !== undefined) setName(fv);
+   623→   623→                focusAmount();
+   624→   624→              }
+   625→   625→              if (e.key === 'Escape') {
+   626→   626→                e.preventDefault();
+   627→   627→                onDone();
+   628→   628→              }
+   629→   629→            }}
+   630→   630→          />
+   631→   631→          <FieldError msg={nameErr} />
+   632→   632→        </div>
+   633→   633→        {/* mobile: गाँव • रिश्ता second line */}
+   634→   634→        <div className="mt-0.5 flex gap-2 sm:hidden">
+   635→   635→          <TranslitInput
+   636→   636→            ref={villageMobileRef}
+   637→   637→            {...wire('village')}
+   638→   638→            className="cell-input min-w-0 flex-1 text-[13px] text-ink-soft"
+   639→   639→            placeholder={t('villagePh')}
+   640→   640→            value={village}
+   641→   641→            maxLength={40}
+   642→   642→            autoComplete="off"
+   643→   643→            aria-label={t('village')}
+   644→   644→            script={script}
+   645→   645→            onValueChange={(v) => {
+   646→   646→              setVillage(v);
+   647→   647→              setVillageRaw(v);
+   648→   648→            }}
+   649→   649→          />
+   650→   650→          <TranslitInput
+   651→   651→            className="cell-input min-w-0 flex-1 text-[13px] text-ink-soft"
+   652→   652→            placeholder={t('relationPh')}
+   653→   653→            value={relationship}
+   654→   654→            maxLength={40}
+   655→   655→            autoComplete="off"
+   656→   656→            aria-label={t('relation')}
+   657→   657→            script={script}
+   658→   658→            onValueChange={setRelationship}
+   659→   659→          />
+   660→   660→        </div>
+   661→   661→      </div>
+   662→   662→
+   663→   663→      <div className="hidden min-w-0 px-0.5 sm:block">
+   664→   664→        <TranslitInput
+   665→   665→          className="cell-input text-sm"
+   666→   666→          placeholder={t('villagePh')}
+   667→   667→          value={village}
+   668→   668→          maxLength={40}
+   669→   669→          autoComplete="off"
+   670→   670→          aria-label={t('village')}
+   671→   671→          script={script}
+   672→   672→          onValueChange={(v) => {
+   673→   673→            setVillage(v);
+   674→   674→            setVillageRaw(v);
+   675→   675→          }}
+   676→   676→        />
+   677→   677→      </div>
+   678→   678→
+   679→   679→      <div className="hidden min-w-0 px-0.5 sm:block">
+   680→   680→        <TranslitInput
+   681→   681→          className="cell-input text-sm"
+   682→   682→          placeholder={t('relationPh')}
+   683→   683→          value={relationship}
+   684→   684→          maxLength={40}
+   685→   685→          autoComplete="off"
+   686→   686→          aria-label={t('relation')}
+   687→   687→          script={script}
+   688→   688→          onValueChange={setRelationship}
+   689→   689→        />
+   690→   690→      </div>
+   691→   691→
+   692→   692→      <div className="px-0.5">
+   693→   693→        <div className="flex items-center justify-end gap-0.5">
+   694→   694→          <span className="font-hand text-base font-bold text-ink-soft">₹</span>
+   695→   695→          <input
+   696→   696→            ref={amountRef}
+   697→   697→            className="cell-input w-full text-right text-[15px] font-bold tabular-nums"
+   698→   698→            style={{ fontVariantNumeric: 'tabular-nums' }}
+   699→   699→            inputMode="numeric"
+   700→   700→            pattern="[0-9]*"
+   701→   701→            autoComplete="off"
+   702→   702→            placeholder="0"
+   703→   703→            value={amountRaw}
+   704→   704→            enterKeyHint="done"
+   705→   705→            aria-label={t('amount')}
+   706→   706→            onChange={(e) => {
+   707→   707→              setAmountRaw(sanitizeAmountInput(e.target.value));
+   708→   708→              setAmountErr('');
+   709→   709→            }}
+   710→   710→            onKeyDown={(e) => {
+   711→   711→              if (isIMEComposing(e)) return;
+   712→   712→              if (e.key === 'Enter') {
+   713→   713→                e.preventDefault();
+   714→   714→                doSave();
+   715→   715→              }
+   716→   716→              if (e.key === 'Escape') {
+   717→   717→                e.preventDefault();
+   718→   718→                onDone();
+   719→   719→              }
+   720→   720→            }}
+   721→   721→          />
+   722→   722→          <FieldError msg={amountErr} />
+   723→   723→        </div>
+   724→   724→      </div>
+   725→   725→
+   726→   726→      <div className="hidden px-0.5 sm:block">
+   727→   727→        <input
+   728→   728→          type="date"
+   729→   729→          className="cell-input text-right text-xs text-ink-soft"
+   730→   730→          value={date}
+   731→   731→          aria-label={t('date')}
+   732→   732→          onChange={(e) => setDate(e.target.value)}
+   733→   733→          onKeyDown={(e) => {
+   734→   734→            if (isIMEComposing(e)) return;
+   735→   735→            if (e.key === 'Enter') {
+   736→   736→              e.preventDefault();
+   737→   737→              doSave();
+   738→   738→            }
+   739→   739→            if (e.key === 'Escape') onDone();
+   740→   740→          }}
+   741→   741→        />
+   742→   742→      </div>
+   743→   743→
+   744→   744→      {/* dictionary suggestions while editing */}
+   745→   745→      {sug.length > 0 && <SuggestionChips sug={sug} onChoose={choose} />}
+   746→   746→
+   747→   747→      {/* नोट + actions */}
+   748→   748→      <div className="col-span-full flex flex-wrap items-center gap-1.5 pb-1.5 pt-0.5">
+   749→   749→        <input
+   750→   750→          className="cell-input min-w-0 flex-1 text-[13px] text-ink-soft"
+   751→   751→          placeholder={t('notePh')}
+   752→   752→          value={note}
+   753→   753→          maxLength={80}
+   754→   754→          autoComplete="off"
+   755→   755→          aria-label={t('note')}
+   756→   756→          onChange={(e) => setNote(e.target.value)}
+   757→   757→          onKeyDown={(e) => {
+   758→   758→            if (isIMEComposing(e)) return;
+   759→   759→            if (e.key === 'Enter') {
+   760→   760→              e.preventDefault();
+   761→   761→              doSave();
+   762→   762→            }
+   763→   763→            if (e.key === 'Escape') onDone();
+   764→   764→          }}
+   765→   765→        />
+   766→   766→        <button
+   767→   767→          className="ghost-ink-btn flex h-9 w-9 shrink-0 items-center justify-center !border-margin-red/50 !text-margin-red"
+   768→   768→          onClick={() => setConfirmDelete(true)}
+   769→   769→          aria-label={t('delete')}
+   770→   770→        >
+   771→   771→          <Trash2 className="h-4 w-4" />
+   772→   772→        </button>
+   773→   773→        <button className="ghost-ink-btn h-9 px-3 text-base" onClick={onDone}>
+   774→   774→          {t('cancel')}
+   775→   775→        </button>
+   776→   776→        <button className="ink-btn h-9 px-4 text-base" onClick={() => doSave()}>
+   777→   777→          {t('save')}
+   778→   778→        </button>
+   779→   779→      </div>
+   780→   780→
+   781→   781→      {dup && (
+   782→   782→        <div className="col-span-full animate-stamp-in rounded-md border-2 border-dashed border-margin-red/60 bg-margin-red/5 px-3 py-2">
+   783→   783→          <p className="text-sm text-ink">
+   784→   784→            {t('duplicateWarning')} <span className="font-hand font-bold">{dup}</span>
+   785→   785→          </p>
+   786→   786→          <div className="mt-1.5 flex gap-2">
+   787→   787→            <button
+   788→   788→              className="ghost-ink-btn h-9 flex-1 text-base"
+   789→   789→              onClick={() => {
+   790→   790→                setDup(null);
+   791→   791→                nameRef.current?.focus();
+   792→   792→              }}
+   793→   793→            >
+   794→   794→              {t('no')}
+   795→   795→            </button>
+   796→   796→            <button className="ink-btn h-9 flex-1 text-base" onClick={() => doSave(true)}>
+   797→   797→              {t('writeAnyway')}
+   798→   798→            </button>
+   799→   799→          </div>
+   800→   800→        </div>
+   801→   801→      )}
+   802→   802→
+   803→   803→      <ConfirmDialog
+   804→   804→        open={confirmDelete}
+   805→   805→        onOpenChange={setConfirmDelete}
+   806→   806→        title={t('deleteConfirmTitle')}
+   807→   807→        description={
+   808→   808→          <>
+   809→   809→            <span className="font-hand text-lg font-bold text-ink">{entry.name}</span>
+   810→   810→            <br />
+   811→   811→            <span className="font-semibold">
+   812→   812→              {formatRupees(entry.amount)}
+   813→   813→              {entry.date ? ` • ${isoToDisplayDate(entry.date)}` : ''}
+   814→   814→            </span>
+   815→   815→          </>
+   816→   816→        }
+   817→   817→        confirmLabel={t('yesDelete')}
+   818→   818→        cancelLabel={t('no')}
+   819→   819→        destructive
+   820→   820→        onConfirm={async () => {
+   821→   821→          await removeEntry(entry.id);
+   822→   822→          toast(t('deletedToast'), { duration: 1500 });
+   823→   823→          setConfirmDelete(false);
+   824→   824→          onDone();
+   825→   825→        }}
+   826→   826→      />
+   827→   827→    </div>
+   828→   828→  );
+   829→   829→}
+   830→   830→
