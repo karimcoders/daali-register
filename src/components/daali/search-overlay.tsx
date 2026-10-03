@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useDaali, sortEntries } from '@/lib/daali/store';
-import { formatRupees } from '@/lib/daali/format';
+import { entryAmountText, formatRupees } from '@/lib/daali/format';
 import type { DaaliEntry } from '@/lib/daali/types';
 import { useT } from './use-t';
 import { Search, X } from 'lucide-react';
@@ -62,7 +62,9 @@ export function SearchOverlay({ open, onOpenChange }: { open: boolean; onOpenCha
           e.village.toLowerCase().includes(q) ||
           (e.villageLatin || '').toLowerCase().includes(q) ||
           e.relationship.toLowerCase().includes(q) ||
-          String(e.amount).includes(q);
+          String(e.amount).includes(q) ||
+          (e.item || '').toLowerCase().includes(q) ||
+          e.note.toLowerCase().includes(q);
         if (hit) {
           matched.push({
             entry: e,
@@ -143,7 +145,12 @@ export function SearchOverlay({ open, onOpenChange }: { open: boolean; onOpenCha
                     >
                       <div className="flex items-baseline justify-between gap-2">
                         <span className="truncate font-semibold text-ink">{r.entry.name}</span>
-                        <span className="shrink-0 font-bold text-ink tabular-nums">{formatRupees(r.entry.amount)}</span>
+                        <span className="shrink-0 font-bold text-ink tabular-nums">
+                          {(() => {
+                            const amt = entryAmountText(r.entry);
+                            return amt.cash ? formatRupees(r.entry.amount) : `🎁 ${amt.text}`;
+                          })()}
+                        </span>
                       </div>
                       <div className="mt-0.5 flex items-center justify-between gap-2 text-xs text-ink-soft">
                         <span className="truncate">

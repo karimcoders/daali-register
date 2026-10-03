@@ -22,6 +22,8 @@ import {
   Printer,
   Sparkles,
 } from 'lucide-react';
+import { downloadRegisterPdf } from '@/lib/daali/pdf';
+import { sortEntries } from '@/lib/daali/store';
 
 function Section({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
   return (
@@ -58,6 +60,7 @@ export function SettingsSheet({
   const currentEventId = useDaali((s) => s.currentEventId);
   const importBackup = useDaali((s) => s.importBackup);
   const idbOk = useDaali((s) => s.idbOk);
+  const [pdfBusy, setPdfBusy] = useState(false);
 
   const [pinMode, setPinMode] = useState<'idle' | 'set'>('idle');
   const [pinValue, setPinValue] = useState('');
@@ -84,7 +87,7 @@ export function SettingsSheet({
   };
 
   const exportCSV = () => {
-    const header = ['क्र.', 'शादी/कार्यक्रम', 'नाम', 'गाँव/स्थान', 'रिश्ता', 'रकम', 'तारीख', 'नोट'];
+    const header = ['क्र.', 'शादी/कार्यक्रम', 'नाम', 'गाँव/स्थान', 'रिश्ता', 'रकम', 'सामान/नेवता', 'तारीख', 'नोट'];
     const inNotebook = view === 'notebook' && currentEventId;
     const rows = allEntries
       .filter((e) => (inNotebook ? e.eventId === currentEventId : true))
@@ -96,7 +99,8 @@ export function SettingsSheet({
           e.name,
           e.village,
           e.relationship,
-          String(e.amount),
+          e.amount > 0 ? String(e.amount) : '',
+          e.item || '',
           e.date ? isoToDisplayDate(e.date) : '',
           e.note,
         ]
@@ -144,6 +148,27 @@ export function SettingsSheet({
     { v: 'amount', label: t('sortAmount') },
     { v: 'date', label: t('sortDate') },
   ];
+
+  const handlePdfDownload = async () => {
+    if (pdfBusy || view !== 'notebook' || !currentEventId) return;
+    const event = events.find((e) => e.id === currentEventId);
+    if (!event) return;
+    setPdfBusy(true);
+    try {
+      const entries = sortEntries(
+        allEntries.filter((e) => e.eventId === currentEventId),
+        settings.sortMode
+      );
+      toast.info(t('pdfMaking'), { duration: 4000 });
+      await downloadRegisterPdf(event, entries, settings.language);
+      toast.success(t('pdfDone'), { duration: 2500 });
+      onOpenChange(false);
+    } catch {
+      toast.error(t('pdfError'), { duration: 3000 });
+    } finally {
+      setPdfBusy(false);
+    }
+  };
 
   return (
     <>
@@ -311,11 +336,22 @@ export function SettingsSheet({
                     </span>
                   </button>
                   {view === 'notebook' && (
-                    <button className="ghost-ink-btn h-11 w-full" onClick={onPrint}>
-                      <span className="inline-flex items-center gap-2">
-                        <Printer className="h-4 w-4" /> {t('printPdf')}
-                      </span>
-                    </button>
+                    <>
+                      <button
+                        className="ink-btn h-11 w-full"
+                        onClick={handlePdfDownload}
+                        disabled={pdfBusy}
+                      >
+                        <span className="inline-flex items-center gap-2">
+                          <FileDown className="h-4 w-4" /> {pdfBusy ? t('pdfMaking') : t('pdfDownload')}
+                        </span>
+                      </button>
+                      <button className="ghost-ink-btn h-11 w-full" onClick={onPrint}>
+                        <span className="inline-flex items-center gap-2">
+                          <Printer className="h-4 w-4" /> {t('printPdf')}
+                        </span>
+                      </button>
+                    </>
                   )}
                   <input
                     ref={fileRef}

@@ -2,7 +2,14 @@
 
 import { useMemo } from 'react';
 import { useDaali, sortEntries } from '@/lib/daali/store';
-import { formatNumber, formatRupees, isoToDisplayDate, isoToHindiDate } from '@/lib/daali/format';
+import {
+  countItemEntries,
+  entryAmountText,
+  formatNumber,
+  formatRupees,
+  isoToDisplayDate,
+  isoToHindiDate,
+} from '@/lib/daali/format';
 import { useT } from './use-t';
 
 const ROWS_PER_SHEET = 22;
@@ -32,7 +39,8 @@ export function PrintRegister() {
   if (!event) return null;
 
   const rtl = settings.language === 'ur';
-  const totalSum = sorted.reduce((a, e) => a + e.amount, 0);
+  const totalSum = sorted.reduce((a, e) => a + (e.amount || 0), 0);
+  const itemCount = countItemEntries(sorted);
   const sheets: typeof sorted[] = [];
   for (let i = 0; i < sorted.length; i += ROWS_PER_SHEET) {
     sheets.push(sorted.slice(i, i + ROWS_PER_SHEET));
@@ -89,19 +97,24 @@ export function PrintRegister() {
               </tr>
             </thead>
             <tbody>
-              {sheet.map((entry, i) => (
-                <tr key={entry.id}>
-                  <td>{si * ROWS_PER_SHEET + i + 1}</td>
-                  <td>
-                    {entry.name}
-                    {entry.note ? <span style={{ color: '#666' }}> ({entry.note})</span> : ''}
-                  </td>
-                  <td>{entry.village}</td>
-                  <td>{entry.relationship}</td>
-                  <td className="amt">{formatNumber(entry.amount)}</td>
-                  <td>{entry.date ? isoToDisplayDate(entry.date) : ''}</td>
-                </tr>
-              ))}
+              {sheet.map((entry, i) => {
+                const amt = entryAmountText(entry);
+                return (
+                  <tr key={entry.id}>
+                    <td>{si * ROWS_PER_SHEET + i + 1}</td>
+                    <td>
+                      {entry.name}
+                      {entry.note ? <span style={{ color: '#666' }}> ({entry.note})</span> : ''}
+                    </td>
+                    <td>{entry.village}</td>
+                    <td>{entry.relationship}</td>
+                    <td className="amt" style={amt.cash ? undefined : { fontFamily: rtl ? "'Noto Nastaliq Urdu', serif" : "'Kalam', cursive", color: '#6b5d49' }}>
+                      {amt.cash ? `₹${formatNumber(entry.amount)}` : `🎁 ${amt.text}`}
+                    </td>
+                    <td>{entry.date ? isoToDisplayDate(entry.date) : ''}</td>
+                  </tr>
+                );
+              })}
               {/* keep empty rows so the printed page looks like a register */}
               {Array.from({ length: Math.max(0, ROWS_PER_SHEET - sheet.length) }).map((_, i) => (
                 <tr key={`e-${i}`}>
@@ -133,6 +146,7 @@ export function PrintRegister() {
             {si === sheets.length - 1 && (
               <span>
                 {t('totalPeople')}: {formatNumber(sorted.length)} • {t('totalDaali')}: {formatRupees(totalSum)}
+                {itemCount > 0 ? ` • ${t('itemCount')}: ${formatNumber(itemCount)}` : ''}
               </span>
             )}
           </div>

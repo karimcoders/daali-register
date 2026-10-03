@@ -80,3 +80,14 @@ export function downloadFile(content: string, filename: string, mime: string): v
 export function isArabicText(t: string): boolean {
   return /[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFC]/.test(t);
 }
+
+/** What the रकम column shows: ₹ cash, or नेवता/सामान text */
+export function entryAmountText(entry: { amount: number; item?: string }): { cash: boolean; text: string } {
+  if (entry.amount > 0) return { cash: true, text: formatRupees(entry.amount) };
+  return { cash: false, text: (entry.item || '').trim() };
+}
+
+/** Number of entries that are नेवता/सामान (non-cash) */
+export function countItemEntries(entries: Array<{ amount: number; item?: string }>): number {
+  return entries.filter((e) => e.amount <= 0 && (e.item || '').trim() !== '').length;
+}

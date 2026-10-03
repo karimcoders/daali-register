@@ -20,7 +20,10 @@ const GRID = 'grid grid-cols-[2rem_1fr_5.2rem] sm:grid-cols-[2.4rem_minmax(0,2fr
 
 export const QUICK_AMOUNTS = [101, 251, 501, 1001, 2001, 5001];
 
-type SugField = 'name' | 'village' | 'relation';
+/** which cell of a written line was tapped — pen-style direct editing */
+export type EditCell = 'name' | 'village' | 'relation' | 'amount' | 'date';
+
+type SugField = 'name' | 'village' | 'relation' | 'item';
 
 function useSuggest() {
   const [sug, setSug] = useState<Suggestion[]>([]);
@@ -73,28 +76,80 @@ function SuggestionChips({
 // quick ₹ chips — shown only while the line is active
 function QuickAmounts({
   amountRaw,
+  itemText,
+  itemMode,
+  onMode,
   onPick,
 }: {
   amountRaw: string;
+  itemText: string;
+  itemMode: boolean;
+  onMode: (v: boolean) => void;
   onPick: (n: number) => void;
 }) {
+  const t = useT();
   const amountNum = parseInt(amountRaw || '0', 10) || 0;
   return (
     <div className="col-span-full flex flex-wrap items-center gap-1 pb-1 pt-0.5">
-      {QUICK_AMOUNTS.map((q) => (
-        <button
-          key={q}
-          type="button"
-          className={`chip h-8 min-w-[3.1rem] px-2 text-[13px] ${String(q) === amountRaw ? '!border-margin-red !bg-margin-red/10 font-bold' : ''}`}
-          onClick={() => onPick(q)}
-          aria-label={formatRupees(q)}
-        >
-          {formatRupees(q)}
-        </button>
-      ))}
-      {amountNum > 0 && (
-        <span className="ml-auto font-hand text-lg font-bold text-ink">{formatRupees(amountNum)}</span>
+      <ModeChips
+        itemMode={itemMode}
+        onMode={onMode}
+        label={t('amount')}
+      />
+      {!itemMode &&
+        QUICK_AMOUNTS.map((q) => (
+          <button
+            key={q}
+            type="button"
+            className={`chip h-8 min-w-[3.1rem] px-2 text-[13px] ${String(q) === amountRaw ? '!border-margin-red !bg-margin-red/10 font-bold' : ''}`}
+            onClick={() => onPick(q)}
+            aria-label={formatRupees(q)}
+          >
+            {formatRupees(q)}
+          </button>
+        ))}
+      {itemMode ? (
+        itemText.trim() ? (
+          <span className="ml-auto font-hand text-lg font-bold text-ink">🎁 {itemText.trim()}</span>
+        ) : null
+      ) : (
+        amountNum > 0 && (
+          <span className="ml-auto font-hand text-lg font-bold text-ink">{formatRupees(amountNum)}</span>
+        )
       )}
+    </div>
+  );
+}
+
+// ₹ नकद / नेवता-सामान toggle — jaise copy mein kabhi paise, kabhi saaman likhte hain
+function ModeChips({
+  itemMode,
+  onMode,
+  label,
+}: {
+  itemMode: boolean;
+  onMode: (v: boolean) => void;
+  label: string;
+}) {
+  const t = useT();
+  return (
+    <div className="flex shrink-0 items-center gap-1" role="group" aria-label={label}>
+      <button
+        type="button"
+        className={`chip h-8 px-2.5 text-[13px] ${!itemMode ? '!border-margin-red !bg-margin-red/10 font-bold' : ''}`}
+        onClick={() => onMode(false)}
+        aria-pressed={!itemMode}
+      >
+        {t('cashMode')}
+      </button>
+      <button
+        type="button"
+        className={`chip h-8 px-2.5 text-[13px] ${itemMode ? '!border-margin-red !bg-margin-red/10 font-bold' : ''}`}
+        onClick={() => onMode(true)}
+        aria-pressed={itemMode}
+      >
+        🎁 {t('itemMode')}
+      </button>
     </div>
   );
 }
@@ -129,6 +184,9 @@ export function WritingRow({
   const [villageRaw, setVillageRaw] = useState('');
   const [relationship, setRelationship] = useState('');
   const [amountRaw, setAmountRaw] = useState('');
+  // नेवता/सामान mode — non-cash gift written in place of the amount
+  const [itemMode, setItemMode] = useState(false);
+  const [itemText, setItemText] = useState('');
   const [date, setDate] = useState(todayISO());
   const [nameErr, setNameErr] = useState('');
   const [amountErr, setAmountErr] = useState('');
@@ -141,6 +199,7 @@ export function WritingRow({
   const relationMobileRef = useRef<HTMLInputElement>(null);
   const relationDesktopRef = useRef<HTMLInputElement>(null);
   const amountRef = useRef<HTMLInputElement>(null);
+  const itemRef = useRef<HTMLInputElement>(null);
 
   // focus the input that is actually visible (mobile vs desktop grids)
   const focusFirstVisible = (...els: Array<HTMLInputElement | null>) => {
@@ -180,6 +239,8 @@ export function WritingRow({
     setVillageRaw('');
     setRelationship('');
     setAmountRaw('');
+    setItemMode(false);
+    setItemText('');
     setDate(todayISO());
     setNameErr('');
     setAmountErr('');
@@ -190,17 +251,18 @@ export function WritingRow({
   const doCommit = async (force = false) => {
     if (busy) return;
     const nm = name.trim();
+    const it = itemMode ? itemText.trim() : '';
     let ok = true;
     if (!nm) {
       setNameErr(t('nameRequired'));
       ok = false;
     } else setNameErr('');
-    if (amountNum <= 0) {
+    if (amountNum <= 0 && !it) {
       setAmountErr(t('amountRequired'));
       ok = false;
     } else setAmountErr('');
     if (!ok) {
-      (nm ? amountRef : nameRef).current?.focus();
+      (nm ? (itemMode ? itemRef : amountRef) : nameRef).current?.focus();
       return;
     }
     // duplicate — never blocks, just asks once (paper-note style)
@@ -215,7 +277,8 @@ export function WritingRow({
         name: nm,
         village,
         relationship,
-        amount: amountNum,
+        amount: it ? 0 : amountNum,
+        item: it,
         date,
         note: '',
         nameLatin: nameRaw !== nm ? nameRaw : '',
@@ -400,37 +463,71 @@ export function WritingRow({
         />
       </div>
 
-      {/* रकम */}
+      {/* रकम — ya फिर नेवता/सामान (item mode) */}
       <div className="px-0.5">
         <div className="flex items-center justify-end gap-0.5">
-          <span className="font-hand text-base font-bold text-ink-soft">₹</span>
-          <input
-            ref={amountRef}
-            className="cell-input w-full text-right text-[15px] font-bold tabular-nums"
-            style={{ fontVariantNumeric: 'tabular-nums' }}
-            inputMode="numeric"
-            pattern="[0-9]*"
-            autoComplete="off"
-            placeholder="0"
-            value={amountRaw}
-            enterKeyHint="done"
-            aria-label={t('amount')}
-            onChange={(e) => {
-              setAmountRaw(sanitizeAmountInput(e.target.value));
-              setAmountErr('');
-            }}
-            onKeyDown={(e) => {
-              if (isIMEComposing(e)) return;
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                doCommit();
-              }
-              if (e.key === 'Escape') {
-                e.preventDefault();
-                cancelLine();
-              }
-            }}
-          />
+          {itemMode ? (
+            <span className="text-base" aria-hidden="true">🎁</span>
+          ) : (
+            <span className="font-hand text-base font-bold text-ink-soft">₹</span>
+          )}
+          {itemMode ? (
+            <TranslitInput
+              ref={itemRef}
+              {...wire('item')}
+              className="cell-input w-full text-right text-[14px]"
+              placeholder={t('itemPh')}
+              value={itemText}
+              maxLength={60}
+              autoComplete="off"
+              enterKeyHint="done"
+              aria-label={t('itemMode')}
+              script={script}
+              onValueChange={(v) => {
+                setItemText(v);
+                setAmountErr('');
+              }}
+              onKeyDown={(e, fv) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  if (fv !== undefined) setItemText(fv);
+                  doCommit();
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  cancelLine();
+                }
+              }}
+            />
+          ) : (
+            <input
+              ref={amountRef}
+              className="cell-input w-full text-right text-[15px] font-bold tabular-nums"
+              style={{ fontVariantNumeric: 'tabular-nums' }}
+              inputMode="numeric"
+              pattern="[0-9]*"
+              autoComplete="off"
+              placeholder="0"
+              value={amountRaw}
+              enterKeyHint="done"
+              aria-label={t('amount')}
+              onChange={(e) => {
+                setAmountRaw(sanitizeAmountInput(e.target.value));
+                setAmountErr('');
+              }}
+              onKeyDown={(e) => {
+                if (isIMEComposing(e)) return;
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  doCommit();
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  cancelLine();
+                }
+              }}
+            />
+          )}
           <FieldError msg={amountErr} />
         </div>
       </div>
@@ -454,7 +551,7 @@ export function WritingRow({
         />
       </div>
 
-      {/* quick ₹ chips + duplicate note — only while writing */}
+      {/* quick ₹ chips + नेवता toggle + duplicate note — only while writing */}
       {dup ? (
         <div className="col-span-full animate-stamp-in rounded-md border-2 border-dashed border-margin-red/60 bg-margin-red/5 px-3 py-2">
           <p className="text-sm text-ink">
@@ -480,6 +577,13 @@ export function WritingRow({
       ) : (
         <QuickAmounts
           amountRaw={amountRaw}
+          itemText={itemText}
+          itemMode={itemMode}
+          onMode={(v) => {
+            setItemMode(v);
+            setAmountErr('');
+            setTimeout(() => (v ? itemRef : amountRef).current?.focus(), 30);
+          }}
           onPick={(q) => {
             setAmountRaw(String(q));
             setAmountErr('');
@@ -496,11 +600,14 @@ export function EntryEditRow({
   entry,
   serial,
   script,
+  focusCell,
   onDone,
 }: {
   entry: DaaliEntry;
   serial: number;
   script: InputScriptSetting;
+  /** the cell that was tapped — cursor starts there, pen-style */
+  focusCell?: EditCell;
   onDone: () => void;
 }) {
   const t = useT();
@@ -515,6 +622,8 @@ export function EntryEditRow({
   const [villageRaw, setVillageRaw] = useState(entry.villageLatin || '');
   const [relationship, setRelationship] = useState(entry.relationship);
   const [amountRaw, setAmountRaw] = useState(entry.amount ? String(entry.amount) : '');
+  const [itemMode, setItemMode] = useState(!(entry.amount > 0));
+  const [itemText, setItemText] = useState(entry.item || '');
   const [date, setDate] = useState(entry.date || todayISO());
   const [note, setNote] = useState(entry.note);
   const [nameErr, setNameErr] = useState('');
@@ -529,6 +638,8 @@ export function EntryEditRow({
   const relationMobileRef = useRef<HTMLInputElement>(null);
   const relationDesktopRef = useRef<HTMLInputElement>(null);
   const amountRef = useRef<HTMLInputElement>(null);
+  const itemRef = useRef<HTMLInputElement>(null);
+  const dateRef = useRef<HTMLInputElement>(null);
 
   const focusFirstVisible = (...els: Array<HTMLInputElement | null>) => {
     const el = els.find((x) => x && x.offsetParent !== null);
@@ -536,8 +647,26 @@ export function EntryEditRow({
   };
   const focusAmount = () => focusFirstVisible(amountRef.current);
 
+  // cursor starts on the tapped cell — jaise pen wahi rakha ho
   useEffect(() => {
-    const tm = setTimeout(() => nameRef.current?.focus(), 40);
+    const tm = setTimeout(() => {
+      switch (focusCell) {
+        case 'amount':
+          amountRef.current?.focus();
+          break;
+        case 'date':
+          dateRef.current?.focus();
+          break;
+        case 'village':
+          focusFirstVisible(villageMobileRef.current, villageDesktopRef.current);
+          break;
+        case 'relation':
+          focusFirstVisible(relationMobileRef.current, relationDesktopRef.current);
+          break;
+        default:
+          nameRef.current?.focus();
+      }
+    }, 40);
     return () => clearTimeout(tm);
   }, []);
 
@@ -556,17 +685,18 @@ export function EntryEditRow({
   const doSave = async (force = false) => {
     if (busy) return;
     const nm = name.trim();
+    const it = itemMode ? itemText.trim() : '';
     let ok = true;
     if (!nm) {
       setNameErr(t('nameRequired'));
       ok = false;
     } else setNameErr('');
-    if (amountNum <= 0) {
+    if (amountNum <= 0 && !it) {
       setAmountErr(t('amountRequired'));
       ok = false;
     } else setAmountErr('');
     if (!ok) {
-      (nm ? amountRef : nameRef).current?.focus();
+      (nm ? (itemMode ? itemRef : amountRef) : nameRef).current?.focus();
       return;
     }
     if (!force && findDuplicate()) {
@@ -580,7 +710,8 @@ export function EntryEditRow({
         name: nm,
         village,
         relationship,
-        amount: amountNum,
+        amount: it ? 0 : amountNum,
+        item: it,
         date,
         note,
         nameLatin: nameRaw !== nm ? nameRaw : '',
@@ -691,40 +822,75 @@ export function EntryEditRow({
 
       <div className="px-0.5">
         <div className="flex items-center justify-end gap-0.5">
-          <span className="font-hand text-base font-bold text-ink-soft">₹</span>
-          <input
-            ref={amountRef}
-            className="cell-input w-full text-right text-[15px] font-bold tabular-nums"
-            style={{ fontVariantNumeric: 'tabular-nums' }}
-            inputMode="numeric"
-            pattern="[0-9]*"
-            autoComplete="off"
-            placeholder="0"
-            value={amountRaw}
-            enterKeyHint="done"
-            aria-label={t('amount')}
-            onChange={(e) => {
-              setAmountRaw(sanitizeAmountInput(e.target.value));
-              setAmountErr('');
-            }}
-            onKeyDown={(e) => {
-              if (isIMEComposing(e)) return;
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                doSave();
-              }
-              if (e.key === 'Escape') {
-                e.preventDefault();
-                onDone();
-              }
-            }}
-          />
+          {itemMode ? (
+            <span className="text-base" aria-hidden="true">🎁</span>
+          ) : (
+            <span className="font-hand text-base font-bold text-ink-soft">₹</span>
+          )}
+          {itemMode ? (
+            <TranslitInput
+              ref={itemRef}
+              {...wire('item')}
+              className="cell-input w-full text-right text-[14px]"
+              placeholder={t('itemPh')}
+              value={itemText}
+              maxLength={60}
+              autoComplete="off"
+              enterKeyHint="done"
+              aria-label={t('itemMode')}
+              script={script}
+              onValueChange={(v) => {
+                setItemText(v);
+                setAmountErr('');
+              }}
+              onKeyDown={(e, fv) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  if (fv !== undefined) setItemText(fv);
+                  doSave();
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  onDone();
+                }
+              }}
+            />
+          ) : (
+            <input
+              ref={amountRef}
+              className="cell-input w-full text-right text-[15px] font-bold tabular-nums"
+              style={{ fontVariantNumeric: 'tabular-nums' }}
+              inputMode="numeric"
+              pattern="[0-9]*"
+              autoComplete="off"
+              placeholder="0"
+              value={amountRaw}
+              enterKeyHint="done"
+              aria-label={t('amount')}
+              onChange={(e) => {
+                setAmountRaw(sanitizeAmountInput(e.target.value));
+                setAmountErr('');
+              }}
+              onKeyDown={(e) => {
+                if (isIMEComposing(e)) return;
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  doSave();
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  onDone();
+                }
+              }}
+            />
+          )}
           <FieldError msg={amountErr} />
         </div>
       </div>
 
       <div className="hidden px-0.5 sm:block">
         <input
+          ref={dateRef}
           type="date"
           className="cell-input text-right text-xs text-ink-soft"
           value={date}
@@ -744,8 +910,16 @@ export function EntryEditRow({
       {/* dictionary suggestions while editing */}
       {sug.length > 0 && <SuggestionChips sug={sug} onChoose={choose} />}
 
-      {/* नोट + actions */}
+      {/* नोट + actions — साथ mein नकद/नेवता toggle */}
       <div className="col-span-full flex flex-wrap items-center gap-1.5 pb-1.5 pt-0.5">
+        <ModeChips
+          itemMode={itemMode}
+          onMode={(v) => {
+            setItemMode(v);
+            setAmountErr('');
+          }}
+          label={t('amount')}
+        />
         <input
           className="cell-input min-w-0 flex-1 text-[13px] text-ink-soft"
           placeholder={t('notePh')}
@@ -809,7 +983,7 @@ export function EntryEditRow({
             <span className="font-hand text-lg font-bold text-ink">{entry.name}</span>
             <br />
             <span className="font-semibold">
-              {formatRupees(entry.amount)}
+              {entry.amount > 0 ? formatRupees(entry.amount) : (entry.item || t('itemMode'))}
               {entry.date ? ` • ${isoToDisplayDate(entry.date)}` : ''}
             </span>
           </>

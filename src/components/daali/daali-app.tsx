@@ -1,7 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useDaali } from '@/lib/daali/store';
+import { useDaali, sortEntries } from '@/lib/daali/store';
+import { downloadRegisterPdf } from '@/lib/daali/pdf';
+import { toast } from 'sonner';
 import { useT } from './use-t';
 import { HomeScreen } from './home-screen';
 import { Notebook } from './notebook';
@@ -39,12 +41,16 @@ export function DaaliApp() {
   const init = useDaali((s) => s.init);
   const deleteEvent = useDaali((s) => s.deleteEvent);
   const currentEventId = useDaali((s) => s.currentEventId);
+  const events = useDaali((s) => s.events);
+  const allEntries = useDaali((s) => s.allEntries);
+  const settings = useDaali((s) => s.settings);
 
   const [newEventOpen, setNewEventOpen] = useState(false);
   const [renameId, setRenameId] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [printing, setPrinting] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
   const [confirmDeleteEvent, setConfirmDeleteEvent] = useState(false);
   const printTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -60,6 +66,32 @@ export function DaaliApp() {
       window.print();
     }, 250);
   }, [view, printing]);
+
+  // real .pdf file download — seedha download ho jata hai, print dialog nahi aata
+  const handlePdf = useCallback(async () => {
+    if (view !== 'notebook' || pdfBusy || !currentEventId) return;
+    const event = events.find((e) => e.id === currentEventId);
+    if (!event) return;
+    setPdfBusy(true);
+    toast.info(t('pdfMaking'), { duration: 4000 });
+    try {
+      const entries = sortEntries(
+        allEntries.filter((e) => e.eventId === currentEventId),
+        settings.sortMode
+      );
+      await downloadRegisterPdf(event, entries, settings.language);
+      toast.success(t('pdfDone'), { duration: 2500 });
+    } catch (err) {
+      if (typeof window !== 'undefined') {
+        (window as unknown as { __pdfError?: string }).__pdfError = String(
+          err instanceof Error ? err.stack : err
+        );
+      }
+      toast.error(t('pdfError'), { duration: 3000 });
+    } finally {
+      setPdfBusy(false);
+    }
+  }, [view, pdfBusy, currentEventId, events, allEntries, settings, t]);
 
   useEffect(() => {
     const after = () => {
@@ -113,6 +145,7 @@ export function DaaliApp() {
             onRenameEvent={openRename}
             onDeleteEvent={() => setConfirmDeleteEvent(true)}
             onPrint={handlePrint}
+            onPdf={handlePdf}
           />
         )}
       </div>

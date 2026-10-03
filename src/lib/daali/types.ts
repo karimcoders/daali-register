@@ -15,7 +15,9 @@ export interface DaaliEntry {
   name: string;
   village: string;
   relationship: string;
-  amount: number; // whole rupees
+  amount: number; // whole rupees (0 when the gift is an item/nevta)
+  /** नेवता / सामान — non-cash gift (मिठाई, कपड़ा, गिफ्ट…) written instead of an amount */
+  item?: string;
   date: string; // ISO yyyy-mm-dd (may be empty)
   note: string;
   /** original roman typing (when written via transliteration) — used for search */
@@ -64,6 +66,7 @@ export interface EntryInput {
   village: string;
   relationship: string;
   amount: number;
+  item?: string;
   date: string;
   note: string;
   nameLatin?: string;
