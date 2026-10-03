@@ -91,6 +91,24 @@
   src: url('/fonts/noto-sans-devanagari-700-latin.woff2') format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
+/* Noto Nastaliq Urdu (variable 400–700) — arabic subset */
+@font-face {
+  font-family: 'Noto Nastaliq Urdu';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/noto-nastaliq-urdu-arabic.woff2') format('woff2');
+  unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0897-08E1, U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74, U+FE76-FEFC;
+}
+/* Noto Nastaliq Urdu — latin subset */
+@font-face {
+  font-family: 'Noto Nastaliq Urdu';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/noto-nastaliq-urdu-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
 
 @theme inline {
   --color-background: var(--background);
@@ -185,6 +203,7 @@
   --desk: #ece2c8;              /* desk background */
   --font-body: 'Noto Sans Devanagari', 'Segoe UI', system-ui, -apple-system, sans-serif;
   --font-hand: 'Kalam', 'Noto Sans Devanagari', cursive;
+  --font-urdu: 'Noto Nastaliq Urdu', 'Noto Sans Devanagari', serif;
 }
 
 .dark {
@@ -573,6 +592,102 @@ input[type='date']::-webkit-calendar-picker-indicator {
 /* ─── Bottom nav safe area ────────────────────────────────────────────────── */
 .safe-bottom {
   padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* ─── Inline writing on the ruled lines (no popup) ────────────────────────── */
+.cell-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--ink);
+  width: 100%;
+  min-width: 0;
+  padding: 3px 5px;
+  font-family: inherit;
+  caret-color: var(--margin-red);
+  border-radius: 3px;
+}
+.cell-input::placeholder {
+  color: rgba(85, 96, 109, 0.45);
+}
+.cell-input:focus {
+  background: rgba(192, 57, 43, 0.055);
+  box-shadow: 0 1.5px 0 rgba(192, 57, 43, 0.45);
+}
+
+/* register rows padding — logical, so the red margin side flips in RTL */
+.register-rows {
+  padding-inline-start: 3.9rem;
+  padding-inline-end: 0.75rem;
+}
+@media (min-width: 640px) {
+  .register-rows {
+    padding-inline-start: 4.6rem;
+    padding-inline-end: 1.25rem;
+  }
+}
+
+/* ─── Urdu (اردو) — RTL mirror + Nastaliq ─────────────────────────────────── */
+[dir='rtl'] body {
+  font-family: var(--font-urdu);
+  line-height: 1.9;
+}
+[dir='rtl'] .font-hand {
+  font-family: 'Noto Nastaliq Urdu', serif;
+  line-height: 1.9;
+}
+[dir='rtl'] input,
+[dir='rtl'] textarea,
+[dir='rtl'] select {
+  font-family: var(--font-urdu);
+}
+[dir='rtl'] .ink-btn,
+[dir='rtl'] .ghost-ink-btn,
+[dir='rtl'] .chip {
+  font-family: 'Noto Nastaliq Urdu', serif;
+}
+/* Nastaliq needs taller rows for its deep descenders */
+[dir='rtl'] .ruled-row {
+  min-height: 58px;
+}
+@media (min-width: 640px) {
+  [dir='rtl'] .ruled-row {
+    min-height: 62px;
+  }
+}
+/* the register spine & red margin line flip to the right, jaise Urdu copy */
+[dir='rtl'] .paper-spine {
+  left: auto;
+  right: 0;
+  border-radius: 0 10px 10px 0;
+  background: linear-gradient(
+    to left,
+    rgba(110, 80, 35, 0.16),
+    rgba(110, 80, 35, 0.05) 45%,
+    transparent
+  );
+}
+.dark [dir='rtl'] .paper-spine {
+  background: linear-gradient(
+    to left,
+    rgba(0, 0, 0, 0.22),
+    rgba(0, 0, 0, 0.07) 45%,
+    transparent
+  );
+}
+[dir='rtl'] .paper-margin {
+  left: auto;
+  right: 3.25rem;
+}
+[dir='rtl'] .paper-margin::after {
+  left: auto;
+  right: 3px;
+}
+/* numbers stay clean LTR inside RTL text */
+[dir='rtl'] .tabular-nums,
+[dir='rtl'] input[type='number'],
+[dir='rtl'] input[type='date'] {
+  direction: ltr;
 }
 
 /* ─── PRINT / PDF — printed traditional register ──────────────────────────── */

@@ -18,6 +18,7 @@ import {
   Languages,
   Lock,
   Moon,
+  PenLine,
   Printer,
   Sparkles,
 } from 'lucide-react';
@@ -46,6 +47,7 @@ export function SettingsSheet({
   const t = useT();
   const settings = useDaali((s) => s.settings);
   const setLanguage = useDaali((s) => s.setLanguage);
+  const setInputScript = useDaali((s) => s.setInputScript);
   const setDarkMode = useDaali((s) => s.setDarkMode);
   const setPageAnimation = useDaali((s) => s.setPageAnimation);
   const setSortMode = useDaali((s) => s.setSortMode);
@@ -164,17 +166,38 @@ export function SettingsSheet({
               {/* Language */}
               <Section icon={<Languages className="h-4 w-4" />} title={t('language')}>
                 <div className="flex gap-2">
-                  {(['hi', 'en'] as const).map((l) => (
+                  {(['hi', 'ur', 'en'] as const).map((l) => (
                     <button
                       key={l}
                       className={`chip h-10 flex-1 text-[15px] ${settings.language === l ? '!border-margin-red !bg-margin-red/10 font-bold' : ''}`}
                       onClick={() => setLanguage(l)}
                       aria-pressed={settings.language === l}
                     >
-                      {l === 'hi' ? t('hindi') : t('english')}
+                      {l === 'hi' ? t('hindi') : l === 'ur' ? t('urdu') : t('english')}
                     </button>
                   ))}
                 </div>
+              </Section>
+
+              {/* Writing script — हिंदी / اردو / English typing */}
+              <Section icon={<PenLine className="h-4 w-4" />} title={t('scriptLabel')}>
+                <div className="flex gap-2">
+                  {([
+                    { v: 'hi' as const, label: t('scriptHi') },
+                    { v: 'ur' as const, label: t('scriptUr') },
+                    { v: 'off' as const, label: t('scriptEn') },
+                  ]).map((o) => (
+                    <button
+                      key={o.v}
+                      className={`chip h-10 flex-1 text-[15px] ${settings.inputScript === o.v ? '!border-margin-red !bg-margin-red/10 font-bold' : ''}`}
+                      onClick={() => setInputScript(o.v)}
+                      aria-pressed={settings.inputScript === o.v}
+                    >
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-1.5 text-xs leading-relaxed text-ink-soft">{t('scriptHint')}</p>
               </Section>
 
               {/* Display */}

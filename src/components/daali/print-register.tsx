@@ -31,6 +31,7 @@ export function PrintRegister() {
 
   if (!event) return null;
 
+  const rtl = settings.language === 'ur';
   const totalSum = sorted.reduce((a, e) => a + e.amount, 0);
   const sheets: typeof sorted[] = [];
   for (let i = 0; i < sorted.length; i += ROWS_PER_SHEET) {
@@ -39,7 +40,7 @@ export function PrintRegister() {
   if (sheets.length === 0) sheets.push([]);
 
   return (
-    <div className="print-only" aria-hidden="true">
+    <div className="print-only" aria-hidden="true" dir={rtl ? 'rtl' : 'ltr'}>
       {sheets.map((sheet, si) => (
         <div
           key={si}
@@ -48,14 +49,26 @@ export function PrintRegister() {
           {/* header — only on the first printed page */}
           {si === 0 && (
             <div style={{ textAlign: 'center', marginBottom: '8px' }}>
-              <div style={{ fontFamily: "'Kalam', cursive", fontSize: '20pt', fontWeight: 700 }}>
+              <div
+                style={{
+                  fontFamily: rtl ? "'Noto Nastaliq Urdu', serif" : "'Kalam', cursive",
+                  fontSize: '20pt',
+                  fontWeight: 700,
+                }}
+              >
                 {t('daaliRegister')}
               </div>
               <div style={{ fontSize: '12pt', marginTop: '2px' }}>
                 {t('eventLabel')}: <b>{event.name}</b>
               </div>
               <div style={{ fontSize: '11pt' }}>
-                {event.date ? `${t('dateLabel')}: ${isoToHindiDate(event.date) || isoToDisplayDate(event.date)}` : ''}
+                {event.date
+                  ? `${t('dateLabel')}: ${
+                      settings.language === 'hi'
+                        ? isoToHindiDate(event.date) || isoToDisplayDate(event.date)
+                        : isoToDisplayDate(event.date)
+                    }`
+                  : ''}
                 {event.date && event.location ? ' • ' : ''}
                 {event.location ? `${t('villageLabel')}: ${event.location}` : ''}
               </div>

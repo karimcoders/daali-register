@@ -58,7 +58,9 @@ export function SearchOverlay({ open, onOpenChange }: { open: boolean; onOpenCha
         const e = entries[i];
         const hit =
           e.name.toLowerCase().includes(q) ||
+          (e.nameLatin || '').toLowerCase().includes(q) ||
           e.village.toLowerCase().includes(q) ||
+          (e.villageLatin || '').toLowerCase().includes(q) ||
           e.relationship.toLowerCase().includes(q) ||
           String(e.amount).includes(q);
         if (hit) {
@@ -93,7 +95,7 @@ export function SearchOverlay({ open, onOpenChange }: { open: boolean; onOpenCha
         <div className="paper-spine hidden sm:block" />
         <div className="paper-margin hidden sm:block" />
         <DialogHeader className="px-5 pb-2 pt-4 sm:px-8">
-          <DialogTitle className="text-left font-hand text-2xl text-ink">🔍 {t('searchTitle')}</DialogTitle>
+          <DialogTitle className="text-start font-hand text-2xl text-ink">🔍 {t('searchTitle')}</DialogTitle>
           <DialogDescription className="sr-only">{t('searchTitle')}</DialogDescription>
         </DialogHeader>
 
@@ -136,7 +138,7 @@ export function SearchOverlay({ open, onOpenChange }: { open: boolean; onOpenCha
                 {results.map((r) => (
                   <li key={r.entry.id}>
                     <button
-                      className="w-full rounded-md px-3 py-2.5 text-left transition-colors hover:bg-ink/[0.06]"
+                      className="w-full rounded-md px-3 py-2.5 text-start transition-colors hover:bg-ink/[0.06]"
                       onClick={() => go(r)}
                     >
                       <div className="flex items-baseline justify-between gap-2">

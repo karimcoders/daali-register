@@ -4,7 +4,7 @@
  *  - Fonts / icons / manifest: cache-first (immutable assets)
  * After the first online visit the whole app works without internet.
  */
-const CACHE = 'daali-v2';
+const CACHE = 'daali-v3';
 const PRECACHE = ['/', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', (event) => {

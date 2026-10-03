@@ -18,16 +18,23 @@ export interface DaaliEntry {
   amount: number; // whole rupees
   date: string; // ISO yyyy-mm-dd (may be empty)
   note: string;
+  /** original roman typing (when written via transliteration) — used for search */
+  nameLatin?: string;
+  villageLatin?: string;
   createdAt: number;
   updatedAt: number;
 }
 
-export type Language = 'hi' | 'en';
+export type Language = 'hi' | 'ur' | 'en';
+
+/** Script used when writing entries: हिंदी / اردو / English */
+export type InputScriptSetting = 'hi' | 'ur' | 'off';
 
 export type SortMode = 'register' | 'name' | 'amount' | 'date';
 
 export interface Settings {
   language: Language;
+  inputScript: InputScriptSetting;
   darkMode: boolean;
   pageAnimation: boolean;
   pinHash: string | null; // simple local deterrent lock
@@ -36,6 +43,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   language: 'hi',
+  inputScript: 'hi',
   darkMode: false,
   pageAnimation: true,
   pinHash: null,
@@ -58,9 +66,11 @@ export interface EntryInput {
   amount: number;
   date: string;
   note: string;
+  nameLatin?: string;
+  villageLatin?: string;
 }
 
-// Common relationships for datalist suggestions (rural Bihar context)
+// Common relationships for suggestions (rural Bihar context)
 export const RELATIONSHIP_SUGGESTIONS_HI = [
   'मामा', 'चाचा', 'मौसी', 'बुआ', 'नाना', 'नानी', 'दादा', 'दादी',
   'भाई', 'बहन', 'भाभी', 'जीजा', 'दोस्त', 'पड़ोसी', 'ससुर', 'साला',

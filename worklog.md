@@ -30,3 +30,23 @@ Stage Summary:
 - Key decision: pages are dynamic (rows-per-page adapts to viewport; never stored in data — per spec §18). Sorting is view-only; register order = createdAt.
 - Known dev-note: service worker network-first keeps dev/preview always fresh; offline capability verified by airplane-mode test.
 - Test artifacts: scripts/shot-01…17 PNGs, scripts/print-test.pdf.
+
+---
+Task ID: 2
+Agent: Super Z (main agent)
+Task: User feedback round — (1) "hindi me type nhi ho rha" → make Hindi/Urdu typing work on a normal English keyboard; (2) add all 3 languages (हिंदी / اردو / English) for UI and writing; (3) remove the popup entry form — write DIRECTLY on the register lines, Enter → new line, jaise asli copy.
+
+Work Log:
+- Built offline rule-based transliteration engine (src/lib/daali/translit.ts): Roman→Devanagari + Roman→Urdu. Greedy longest-match tokenizer; halant clusters (क्र, प्र), n→ं anusvara before stops, word-final i/u lengthening (ramji→रामजी, lalu→लालू), single-a→ा (kumar→कुमार, mama→मामा, gupta→गुप्ता). No network, no dictionary.
+- TranslitInput component (translit-input.tsx): word converts on Space/Enter/blur (Google Input Tools style); Backspace un-converts the last word back to roman; keeps a parallel latin mirror via onRawChange for search/dup-detection; direct Devanagari/Arabic typing passes through untouched.
+- REMOVED the entry drawer popup (entry-sheet.tsx deleted). New inline-entry.tsx: WritingRow = the next empty ruled line; tap it → inputs appear ON the line; Enter commits and the next line auto-focuses (फटाफट quick mode built-in); quick ₹ chips (101–5001) render under the active line; duplicate warning = inline dashed paper note, never blocks. EntryEditRow = tap any written line → same inline editing incl. note + delete + confirm.
+- notebook.tsx rewritten: page count now includes the writing slot (ceil((total+1)/rows)) — the next blank line always exists like a real register; auto page-turn when the page fills on commit; ＋ button (bottom nav) dispatches 'daali:write-focus' window event → jumps to writing page + focuses name input; script switcher हिं/اردو/Aa in top bar (persisted as settings.inputScript).
+- 3 UI languages: Language 'hi'|'ur'|'en', full Urdu string dictionary added; document.dir/lang set on init + language change → full RTL mirror (red margin line + spine flip to the right side jaise Urdu copy, grid/nav auto-flip, numbers stay LTR via direction:ltr on numeric inputs).
+- Noto Nastaliq Urdu (variable 400–700, arabic+latin woff2) self-hosted in public/fonts + @font-face + Nastaliq applied for [dir=rtl] body/inputs/buttons + taller ruled rows (58/62px) for Nastaliq descenders.
+- Data model: DaaliEntry + optional nameLatin/villageLatin (stored on add/update) → search matches roman "ramji" against Devanagari राम्जी too; duplicate check compares both.
+- Settings: 3 language chips + new लिखावट (script) section; new-event-sheet name/location now use TranslitInput; print-register renders dir=rtl + Nastaliq header for Urdu; SW cache bumped daali-v3; daali-app root gets no-print.
+- E2E verified with agent-browser (desktop 1280 + mobile 375): create register → type "ramji yadav"→राम्जी यादाव, "madhopur"→माधोपुर, "mama"→मामा ON THE LINE; Enter commits, line 02 auto-focused; quick chips; totals exact (₹550, ₹1,551, ₹3,050); edit amount inline 1001→2500 with live totals; duplicate note appears + नहीं cancels; roman search "ramji" finds Hindi entry + jump; اردو UI → dir=rtl/lang=ur verified, margin flips right, Nastaliq headings; Aa mode types plain English; reload persistence (IndexedDB); OFFLINE: airplane-mode entry saved (موہان in Urdu script — script toggle was active, correct) + SW reload offline; no horizontal scroll at 375px; ＋ focuses name input; 0 console errors; lint 0 problems; tsc clean.
+
+Stage Summary:
+- All three feedback items shipped: (1) Hindi+Urdu typing now works on any keyboard via offline transliteration, (2) हिंदी/اردو/English for both UI and writing incl. full RTL Urdu notebook, (3) popup form removed — click a line, write, Enter → next line, exactly like a paper daali.
+- Deliverable: same single-route PWA (src/app/page.tsx), still zero backend, data model backward-compatible (latin fields optional).

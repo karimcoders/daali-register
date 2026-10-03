@@ -12,6 +12,7 @@ import { useDaali, sortEntries } from '@/lib/daali/store';
 import { formatNumber, formatRupees, isoToDisplayDate } from '@/lib/daali/format';
 import type { DaaliEntry } from '@/lib/daali/types';
 import { useT } from './use-t';
+import { WritingRow, EntryEditRow } from './inline-entry';
 import {
   ChevronLeft,
   ChevronRight,
@@ -49,14 +50,12 @@ function useRowsPerPage(): number {
 }
 
 interface NotebookProps {
-  onAddEntry: () => void;
-  onEditEntry: (id: string) => void;
   onRenameEvent: () => void;
   onDeleteEvent: () => void;
   onPrint: () => void;
 }
 
-export function Notebook({ onAddEntry, onEditEntry, onRenameEvent, onDeleteEvent, onPrint }: NotebookProps) {
+export function Notebook({ onRenameEvent, onDeleteEvent, onPrint }: NotebookProps) {
   const t = useT();
   const events = useDaali((s) => s.events);
   const allEntries = useDaali((s) => s.allEntries);
@@ -66,6 +65,7 @@ export function Notebook({ onAddEntry, onEditEntry, onRenameEvent, onDeleteEvent
   const goHome = useDaali((s) => s.goHome);
   const highlightId = useDaali((s) => s.highlightId);
   const settings = useDaali((s) => s.settings);
+  const setInputScript = useDaali((s) => s.setInputScript);
 
   const rowsPerPage = useRowsPerPage();
   const [flip, setFlip] = useState<'next' | 'prev' | null>(null);
@@ -73,6 +73,8 @@ export function Notebook({ onAddEntry, onEditEntry, onRenameEvent, onDeleteEvent
   const knownIds = useRef<Set<string>>(new Set());
   const firstRender = useRef(true);
   const touch = useRef<{ x: number; y: number } | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [writeSignal, setWriteSignal] = useState(0);
 
   const event = events.find((e) => e.id === currentEventId);
 
@@ -81,16 +83,20 @@ export function Notebook({ onAddEntry, onEditEntry, onRenameEvent, onDeleteEvent
     [allEntries, currentEventId, settings.sortMode]
   );
 
-  const pageCount = Math.max(1, Math.ceil(sorted.length / rowsPerPage));
+  const total = sorted.length;
+  // +1: the next empty line (writing slot) counts as a page content line —
+  // jaise asli register mein agli khali line hamesha hoti hai
+  const pageCount = Math.max(1, Math.ceil((total + 1) / rowsPerPage));
   const page = Math.min(currentPage, pageCount);
   const startIdx = (page - 1) * rowsPerPage;
   const pageEntries = sorted.slice(startIdx, startIdx + rowsPerPage);
-  const fillerCount = Math.max(0, rowsPerPage - pageEntries.length);
+  const writingPage = Math.floor(total / rowsPerPage) + 1; // page holding the writing slot
+  const writingHere = writingPage === page;
+  const fillerCount = rowsPerPage - pageEntries.length - (writingHere ? 1 : 0);
 
   const pageSum = useMemo(() => pageEntries.reduce((a, e) => a + e.amount, 0), [pageEntries]);
-  const totalCount = sorted.length;
   const totalSum = useMemo(() => sorted.reduce((a, e) => a + e.amount, 0), [sorted]);
-  const avg = totalCount > 0 ? Math.round(totalSum / totalCount) : 0;
+  const avg = total > 0 ? Math.round(totalSum / total) : 0;
 
   // Detect newly added entries → write-in animation
   useLayoutEffect(() => {
@@ -112,6 +118,7 @@ export function Notebook({ onAddEntry, onEditEntry, onRenameEvent, onDeleteEvent
     (dir: 'next' | 'prev') => {
       const target = dir === 'next' ? page + 1 : page - 1;
       if (target < 1 || target > pageCount) return;
+      setEditingId(null);
       setPage(target);
       if (settings.pageAnimation) {
         setFlip(dir);
@@ -128,10 +135,35 @@ export function Notebook({ onAddEntry, onEditEntry, onRenameEvent, onDeleteEvent
         setFlip(target > page ? 'next' : 'prev');
         setTimeout(() => setFlip(null), 320);
       }
+      setEditingId(null);
       setPage(target);
     },
     [page, pageCount, setPage, settings.pageAnimation]
   );
+
+  // ＋ button (bottom nav / top bar) → jump to the writing line and start writing.
+  // Arrives as a window event so state updates happen in a callback, not in an effect body.
+  useEffect(() => {
+    const onWriteFocus = () => {
+      setEditingId(null);
+      if (writingPage !== page) {
+        setPage(writingPage);
+        setTimeout(() => setWriteSignal((v) => v + 1), settings.pageAnimation ? 360 : 40);
+      } else {
+        setWriteSignal((v) => v + 1);
+      }
+    };
+    window.addEventListener('daali:write-focus', onWriteFocus);
+    return () => window.removeEventListener('daali:write-focus', onWriteFocus);
+  }, [writingPage, page, setPage, settings.pageAnimation]);
+
+  // after a line is written: if the page became full, palat to the next page automatically
+  const onCommitted = useCallback(() => {
+    if (pageEntries.length + 1 >= rowsPerPage) {
+      setPage(page + 1);
+      setTimeout(() => setWriteSignal((v) => v + 1), settings.pageAnimation ? 360 : 40);
+    }
+  }, [pageEntries.length, rowsPerPage, page, setPage, settings.pageAnimation]);
 
   // Keyboard page turning
   useEffect(() => {
@@ -165,14 +197,20 @@ export function Notebook({ onAddEntry, onEditEntry, onRenameEvent, onDeleteEvent
   const flipClass =
     flip === 'next' ? 'page-turn-next' : flip === 'prev' ? 'page-turn-prev' : '';
 
+  const scriptOptions: Array<{ v: 'hi' | 'ur' | 'off'; label: string }> = [
+    { v: 'hi', label: t('scriptHi') },
+    { v: 'ur', label: t('scriptUr') },
+    { v: 'off', label: t('scriptEn') },
+  ];
+
   if (!event) return null;
 
   return (
     <div className="flex h-full flex-col">
       {/* ── top bar ── */}
-      <div className="no-print flex items-center gap-2 px-2 pt-2 sm:px-6">
+      <div className="no-print flex items-center gap-1.5 px-2 pt-2 sm:gap-2 sm:px-6">
         <button
-          className="ghost-ink-btn flex h-10 w-10 items-center justify-center !border-ink/25"
+          className="ghost-ink-btn flex h-10 w-10 shrink-0 items-center justify-center !border-ink/25"
           onClick={goHome}
           aria-label={t('goBack')}
         >
@@ -181,8 +219,31 @@ export function Notebook({ onAddEntry, onEditEntry, onRenameEvent, onDeleteEvent
         <div className="min-w-0 flex-1 text-center">
           <div className="truncate font-hand text-xl font-bold text-ink">{event.name}</div>
         </div>
+        {/* writing script: हिं / اردو / Aa */}
+        <div
+          className="flex h-10 shrink-0 items-center overflow-hidden rounded-md border border-ink/25"
+          role="group"
+          aria-label={t('scriptLabel')}
+          title={t('scriptHint')}
+        >
+          {scriptOptions.map((o) => (
+            <button
+              key={o.v}
+              className={`h-full px-2 text-[15px] font-bold transition-colors ${
+                settings.inputScript === o.v
+                  ? 'bg-ink text-[#f7f2e2]'
+                  : 'text-ink hover:bg-ink/[0.07]'
+              }`}
+              onClick={() => setInputScript(o.v)}
+              aria-pressed={settings.inputScript === o.v}
+              aria-label={`${t('scriptLabel')}: ${o.label}`}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
         <button
-          className="ghost-ink-btn flex h-10 w-10 items-center justify-center !border-ink/25"
+          className="ghost-ink-btn flex h-10 w-10 shrink-0 items-center justify-center !border-ink/25"
           onClick={onPrint}
           aria-label={t('printPdf')}
         >
@@ -191,7 +252,7 @@ export function Notebook({ onAddEntry, onEditEntry, onRenameEvent, onDeleteEvent
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
-              className="ghost-ink-btn flex h-10 w-10 items-center justify-center !border-ink/25"
+              className="ghost-ink-btn flex h-10 w-10 shrink-0 items-center justify-center !border-ink/25"
               aria-label={t('navMore')}
             >
               <MoreVertical className="h-5 w-5" />
@@ -229,7 +290,7 @@ export function Notebook({ onAddEntry, onEditEntry, onRenameEvent, onDeleteEvent
           <div className="paper-margin" />
 
           {/* page number */}
-          <div className="absolute right-3 top-2 font-hand text-xs text-ink-soft">
+          <div className="absolute end-3 top-2 font-hand text-xs text-ink-soft">
             {t('page')} {page}
           </div>
 
@@ -243,13 +304,13 @@ export function Notebook({ onAddEntry, onEditEntry, onRenameEvent, onDeleteEvent
                 <span className="paper-blank font-hand font-bold">{event.name || '\u00A0'}</span>
               </div>
               <div className="mt-0.5 grid grid-cols-1 gap-x-6 sm:grid-cols-2">
-                <div className="text-left sm:text-right">
+                <div className="text-start sm:text-end">
                   <span className="text-ink-soft">{t('dateLabel')}: </span>
                   <span className="paper-blank font-hand font-bold">
                     {event.date ? isoToDisplayDate(event.date) : '\u00A0'}
                   </span>
                 </div>
-                <div className="text-left">
+                <div className="text-start">
                   <span className="text-ink-soft">{t('villageLabel')}: </span>
                   <span className="paper-blank font-hand font-bold">{event.location || '\u00A0'}</span>
                 </div>
@@ -257,44 +318,62 @@ export function Notebook({ onAddEntry, onEditEntry, onRenameEvent, onDeleteEvent
             </div>
           </header>
 
-          {/* register rows */}
-          <div className="mt-3 flex-1 pl-[3.9rem] pr-3 sm:pl-[4.6rem] sm:pr-5">
+          {/* register rows — likha hua + agli khali line, sab seedha line par */}
+          <div className="register-rows mt-3 flex-1">
             {/* column header */}
-            <div className="grid grid-cols-[2rem_1fr_5.6rem] border-b-2 border-ink/50 pb-1 text-[13px] font-bold text-ink sm:grid-cols-[2.4rem_minmax(0,2fr)_minmax(0,1.35fr)_minmax(0,0.9fr)_6rem_6.2rem]">
+            <div className="grid grid-cols-[2rem_1fr_5.2rem] border-b-2 border-ink/50 pb-1 text-[13px] font-bold text-ink sm:grid-cols-[2.4rem_minmax(0,2fr)_minmax(0,1.35fr)_minmax(0,0.9fr)_6rem_6.2rem]">
               <div className="text-center">{t('colCr')}</div>
               <div>{t('colName')}</div>
               <div className="hidden sm:block">{t('colVillage')}</div>
               <div className="hidden sm:block">{t('colRelation')}</div>
-              <div className="text-right">{t('colAmount')}</div>
-              <div className="hidden text-right sm:block">{t('colDate')}</div>
+              <div className="text-end">{t('colAmount')}</div>
+              <div className="hidden text-end sm:block">{t('colDate')}</div>
             </div>
 
-            {pageEntries.map((entry, i) => (
-              <RegisterRow
-                key={entry.id}
-                entry={entry}
-                serial={startIdx + i + 1}
-                isNew={newIds.has(entry.id)}
-                isHighlight={highlightId === entry.id}
-                onEdit={() => onEditEntry(entry.id)}
-              />
-            ))}
+            {total === 0 && page === 1 && (
+              <p className="px-1 pb-1 pt-2 text-center font-hand text-[15px] leading-snug text-ink-soft/75">
+                {t('firstLineHint')}
+              </p>
+            )}
 
-            {pageEntries.length === 0 && page === 1 && (
-              <div className="py-8 text-center">
-                <p className="font-hand text-lg text-ink-soft">{t('emptyNotebook')}</p>
-                <button className="ink-btn mt-4 h-12 px-5 text-lg" onClick={onAddEntry}>
-                  ＋ {t('addEntry')}
-                </button>
-              </div>
+            {pageEntries.map((entry, i) =>
+              editingId === entry.id ? (
+                <EntryEditRow
+                  key={entry.id}
+                  entry={entry}
+                  serial={startIdx + i + 1}
+                  script={settings.inputScript}
+                  onDone={() => setEditingId(null)}
+                />
+              ) : (
+                <RegisterRow
+                  key={entry.id}
+                  entry={entry}
+                  serial={startIdx + i + 1}
+                  isNew={newIds.has(entry.id)}
+                  isHighlight={highlightId === entry.id}
+                  onEdit={() => setEditingId(entry.id)}
+                />
+              )
+            )}
+
+            {/* the next empty line — yahin likha jata hai */}
+            {writingHere && (
+              <WritingRow
+                key={`write-${page}`}
+                serial={total + 1}
+                script={settings.inputScript}
+                focusSignal={writeSignal}
+                onCommitted={onCommitted}
+              />
             )}
 
             {/* blank ruled lines — jaise register ki khali line */}
-            {Array.from({ length: fillerCount }).map((_, i) => (
+            {Array.from({ length: Math.max(0, fillerCount) }).map((_, i) => (
               <div
                 key={`filler-${i}`}
                 aria-hidden="true"
-                className="ruled-row grid grid-cols-[2rem_1fr_5.6rem] sm:grid-cols-[2.4rem_minmax(0,2fr)_minmax(0,1.35fr)_minmax(0,0.9fr)_6rem_6.2rem]"
+                className="ruled-row grid grid-cols-[2rem_1fr_5.2rem] sm:grid-cols-[2.4rem_minmax(0,2fr)_minmax(0,1.35fr)_minmax(0,0.9fr)_6rem_6.2rem]"
               >
                 <div />
                 <div />
@@ -310,7 +389,7 @@ export function Notebook({ onAddEntry, onEditEntry, onRenameEvent, onDeleteEvent
           <footer className="mt-2 px-4 pb-1 sm:px-8">
             <div className="border-t-2 border-ink/60 pt-2 text-center">
               <div className="font-hand text-xl font-bold text-ink sm:text-2xl">
-                {t('totalPeople')}: {formatNumber(totalCount)}
+                {t('totalPeople')}: {formatNumber(total)}
                 <span className="mx-2 text-margin-red">•</span>
                 {t('totalDaali')}: {formatRupees(totalSum)}
               </div>
@@ -318,7 +397,7 @@ export function Notebook({ onAddEntry, onEditEntry, onRenameEvent, onDeleteEvent
                 <span>
                   {t('pageTotal')}: {pageEntries.length} • {formatRupees(pageSum)}
                 </span>
-                {totalCount > 0 && (
+                {total > 0 && (
                   <span>
                     {t('average')}: {formatRupees(avg)}
                   </span>
@@ -348,7 +427,7 @@ export function Notebook({ onAddEntry, onEditEntry, onRenameEvent, onDeleteEvent
             value={page}
             min={1}
             max={pageCount}
-            aria-label={`${t('page')} — ${t('page')} ${pageCount} तक`}
+            aria-label={`${t('page')} — 1..${pageCount}`}
             onChange={(e) => {
               const n = parseInt(e.target.value, 10);
               if (Number.isFinite(n)) jumpTo(n);
@@ -363,9 +442,6 @@ export function Notebook({ onAddEntry, onEditEntry, onRenameEvent, onDeleteEvent
           aria-label="Next page"
         >
           <ChevronRight className="h-5 w-5" />
-        </button>
-        <button className="ink-btn ml-2 hidden h-11 items-center px-4 text-lg sm:flex" onClick={onAddEntry}>
-          ＋ {t('addEntry')}
         </button>
       </div>
     </div>
@@ -388,7 +464,7 @@ function RegisterRow({
   const t = useT();
   return (
     <div
-      className={`ruled-row grid cursor-pointer grid-cols-[2rem_1fr_5.6rem] items-center text-[15px] text-ink sm:grid-cols-[2.4rem_minmax(0,2fr)_minmax(0,1.35fr)_minmax(0,0.9fr)_6rem_6.2rem] ${
+      className={`ruled-row grid cursor-pointer grid-cols-[2rem_1fr_5.2rem] items-center text-[15px] text-ink sm:grid-cols-[2.4rem_minmax(0,2fr)_minmax(0,1.35fr)_minmax(0,0.9fr)_6rem_6.2rem] ${
         isNew ? 'animate-write-in' : ''
       } ${isHighlight ? 'highlight-flash' : ''} hover:bg-ink/[0.045] active:bg-ink/[0.08]`}
       onClick={onEdit}
@@ -418,10 +494,10 @@ function RegisterRow({
       </div>
       <div className="hidden min-w-0 truncate px-0.5 text-sm sm:block">{entry.village || '—'}</div>
       <div className="hidden min-w-0 truncate px-0.5 text-sm sm:block">{entry.relationship || '—'}</div>
-      <div className="px-0.5 text-right font-bold tabular-nums" style={{ fontVariantNumeric: 'tabular-nums' }}>
+      <div className="px-0.5 text-end font-bold tabular-nums" style={{ fontVariantNumeric: 'tabular-nums' }}>
         {formatRupees(entry.amount)}
       </div>
-      <div className="hidden px-0.5 text-right text-xs text-ink-soft sm:block">
+      <div className="hidden px-0.5 text-end text-xs text-ink-soft sm:block">
         {entry.date ? isoToDisplayDate(entry.date) : ''}
       </div>
       {/* sr-only date for mobile screen readers */}

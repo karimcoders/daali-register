@@ -5,7 +5,6 @@ import { useDaali } from '@/lib/daali/store';
 import { useT } from './use-t';
 import { HomeScreen } from './home-screen';
 import { Notebook } from './notebook';
-import { EntrySheet } from './entry-sheet';
 import { NewEventSheet } from './new-event-sheet';
 import { SearchOverlay } from './search-overlay';
 import { SettingsSheet } from './settings-sheet';
@@ -41,8 +40,6 @@ export function DaaliApp() {
   const deleteEvent = useDaali((s) => s.deleteEvent);
   const currentEventId = useDaali((s) => s.currentEventId);
 
-  const [entryOpen, setEntryOpen] = useState(false);
-  const [editId, setEditId] = useState<string | null>(null);
   const [newEventOpen, setNewEventOpen] = useState(false);
   const [renameId, setRenameId] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -76,21 +73,15 @@ export function DaaliApp() {
     };
   }, []);
 
-  const openAddEntry = useCallback(() => {
+  // ＋ button: notebook → write on the next line (no popup); home → new register
+  const handleAdd = useCallback(() => {
     if (view === 'notebook') {
-      setEditId(null);
-      setEntryOpen(true);
+      window.dispatchEvent(new CustomEvent('daali:write-focus'));
     } else {
-      // home → create a new register
       setRenameId(null);
       setNewEventOpen(true);
     }
   }, [view]);
-
-  const openEditEntry = useCallback((id: string) => {
-    setEditId(id);
-    setEntryOpen(true);
-  }, []);
 
   const openRename = useCallback(() => {
     setRenameId(currentEventId);
@@ -101,7 +92,7 @@ export function DaaliApp() {
   if (locked) return <PinLock />;
 
   return (
-    <div className="flex min-h-dvh flex-col">
+    <div className="no-print flex min-h-dvh flex-col">
       <div
         className="flex-1"
         style={{ paddingBottom: 'calc(4rem + env(safe-area-inset-bottom, 0px))' }}
@@ -119,8 +110,6 @@ export function DaaliApp() {
           />
         ) : (
           <Notebook
-            onAddEntry={openAddEntry}
-            onEditEntry={openEditEntry}
             onRenameEvent={openRename}
             onDeleteEvent={() => setConfirmDeleteEvent(true)}
             onPrint={handlePrint}
@@ -130,12 +119,11 @@ export function DaaliApp() {
 
       <BottomNav
         onSearch={() => setSearchOpen(true)}
-        onAdd={openAddEntry}
+        onAdd={handleAdd}
         onMore={() => setSettingsOpen(true)}
       />
 
       {/* sheets & overlays */}
-      <EntrySheet open={entryOpen} onOpenChange={setEntryOpen} editId={editId} />
       <NewEventSheet
         open={newEventOpen}
         onOpenChange={setNewEventOpen}

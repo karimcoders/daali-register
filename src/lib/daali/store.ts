@@ -66,6 +66,12 @@ export interface EventTotals {
   sum: number;
 }
 
+function applyDocLang(lang: Language) {
+  if (typeof document === 'undefined') return;
+  document.documentElement.lang = lang;
+  document.documentElement.dir = lang === 'ur' ? 'rtl' : 'ltr';
+}
+
 interface DaaliState {
   hydrated: boolean;
   locked: boolean;
@@ -83,6 +89,7 @@ interface DaaliState {
   resetAll: () => Promise<void>;
 
   setLanguage: (l: Language) => void;
+  setInputScript: (sc: Settings['inputScript']) => void;
   setDarkMode: (v: boolean) => void;
   setPageAnimation: (v: boolean) => void;
   setSortMode: (m: SortMode) => void;
@@ -122,6 +129,7 @@ export const useDaali = create<DaaliState>((set, get) => ({
     if (typeof document !== 'undefined') {
       document.documentElement.classList.toggle('dark', settings.darkMode);
     }
+    applyDocLang(settings.language);
     try {
       const [events, allEntries] = await Promise.all([
         idbGetAll<DaaliEvent>(STORE_EVENTS),
@@ -160,6 +168,12 @@ export const useDaali = create<DaaliState>((set, get) => ({
 
   setLanguage: (l) => {
     const s = { ...get().settings, language: l };
+    set({ settings: s });
+    saveSettings(s);
+    applyDocLang(l);
+  },
+  setInputScript: (sc) => {
+    const s = { ...get().settings, inputScript: sc };
     set({ settings: s });
     saveSettings(s);
   },
@@ -253,6 +267,8 @@ export const useDaali = create<DaaliState>((set, get) => ({
       amount: Math.max(0, Math.round(data.amount)),
       date: data.date || '',
       note: (data.note || '').trim(),
+      nameLatin: (data.nameLatin || '').trim() || undefined,
+      villageLatin: (data.villageLatin || '').trim() || undefined,
       createdAt: now,
       updatedAt: now,
     };
@@ -287,6 +303,8 @@ export const useDaali = create<DaaliState>((set, get) => ({
       amount: Math.max(0, Math.round(data.amount)),
       date: data.date || '',
       note: (data.note || '').trim(),
+      nameLatin: (data.nameLatin || '').trim() || undefined,
+      villageLatin: (data.villageLatin || '').trim() || undefined,
       updatedAt: Date.now(),
     };
     set((st) => ({ allEntries: st.allEntries.map((e) => (e.id === id ? updated : e)) }));
