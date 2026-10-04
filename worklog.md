@@ -216,3 +216,26 @@ Stage Summary:
 - PDF ab pakka: scroll kiye bina/kiye, 1 page ya 25 — kabhi nahi katega; aur ab Kalam ki utheli likhawat ki jagah saaf Noto Devanagari (जि/ने/से door se bhi sahi padhe).
 - Site kabhi adhuri na rahe: deploy ke dauran purani files milen to app khud caches saaf karke fresh khul jata hai (auto-heal), warna Hindi recovery page ka "फिर से खोलें" button — data hamesha safe (IndexedDB untouched).
 - Live: https://karimcoders.github.io/daali-register/ • Repo: https://github.com/karimcoders/daali-register (45b2f88)
+
+---
+Task ID: 6
+Agent: Super Z (main agent)
+Task: User's latest IM: "ye kdh ander jar ah... shi banao pdf rela yar" (PDF content shifting inward/cropped — 5th PDF complaint) + "asie kro ki wo dekho real me page next karne, wo jaise real me notebook palat karna hota" (realistic 3D page-flip like a real notebook).
+
+Work Log:
+- Root-caused the 5-round PDF saga: html2canvas DOM capture is inherently unstable on phones (viewport/scroll/DPR/font-race). REWROTE src/lib/daali/pdf.ts: each A4 sheet now drawn DIRECTLY on Canvas 2D (1588×2246 @2x, HarfBuzz shaping via fillText), zero DOM capture → geometry 100% deterministic. Kept proven save chain (share sheet → anchor → tab). Hindi + Urdu (RTL mirrored columns, Nastaliq, ₹ glyph fallback) verified.
+- Rewrote page-turn in notebook.tsx + globals.css: a leaf (front = static snapshot of old page via new LeafPageContent, back = ruled paper) rotates rotateY 0→-180° around the spine (2600px perspective) with moving shade + drop shadow; beneath page revealed as it turns. RTL mirror for Urdu; reduced-motion + pageAnimation setting respected; FLIP_MS=780, safety timer 1000ms.
+- Auto page-turn on commit + focusWriting now use the same 3D flip (pen ready at 560ms).
+- Fixed class-name mismatch found during testing (CSS .leaf-next vs JSX .next) — animation never ran before; now verified.
+- Test-infra lessons: dev server must be double-fork daemonized (Bash tool reaps process groups); test artifacts must live in node_modules/.cache (Turbopack watch reload loop otherwise); SW cache fallback serves stale code when dev server dies; live blob extracted via chunked base64 (HTTPS page can't POST to local HTTP in this Chromium).
+- QA: test-translit 0 fails, test-bidi CLEAN, test-dict-scan CLEAN, eslint src clean, tsc src clean, production build (basePath /daali-register) OK.
+- Deployed: commit 76b4d4d pushed, Actions success, live verified.
+
+Stage Summary:
+- LIVE VERIFIED (real browser, real downloads, files opened page-by-page):
+  - PDF Hindi (live, आलम राज 9 entries): no crop/no inward shift, totals ₹5,401 + सामान 1 correct, नेवता item row in Kalam, page 1/1. 
+  - PDF Urdu (localhost same code): Nastaliq title, mirrored columns, bidi-correct meta, totals correct.
+  - 3D flip: frozen mid-flip screenshot shows leaf rotating over revealed next page; live sampling shows matrix3d active ~700ms then cleared.
+  - Auto page-turn: writing on last line flipped page 3→4 automatically.
+  - Any-row edit: tap row 5 → inline edit pre-filled "मेहमान 5". WhatsApp share button per row. History sheet lists "नई दाली लिखी" entries with timestamps.
+- Artifacts: node_modules/.cache/{live.pdf, live-check-1.png, flipvisual3.png, urdu-check-*.png}; scripts/pdf-catch-server.py.
