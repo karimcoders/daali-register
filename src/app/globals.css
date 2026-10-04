@@ -375,41 +375,131 @@
   animation: write-in 0.28s ease-out both;
 }
 
-@keyframes page-turn-next {
+/* ─── Real notebook page flip — jaise asli copy ka panna palatna ───────────
+   Ek "pann" (leaf) upar se ghoomta hai: front face = purani page, back face =
+   khaali ruled paper. Neeche nayi page pehle se padi hai — pann palatne par
+   wahi reveal hoti hai. RTL (اردو) mein spine right hai, rotation mirror. */
+.flip-stage {
+  perspective: 2600px;
+  perspective-origin: 50% 40%;
+}
+
+.flip-leaf {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  transform-origin: left center;
+  pointer-events: none;
+  z-index: 40;
+  will-change: transform;
+}
+.flip-leaf.next {
+  animation: leaf-turn-next 0.78s cubic-bezier(0.58, 0.04, 0.32, 1) both;
+}
+.flip-leaf.prev {
+  animation: leaf-turn-prev 0.78s cubic-bezier(0.58, 0.04, 0.32, 1) both;
+}
+.flip-leaf.leaf-rtl {
+  transform-origin: right center;
+}
+.flip-leaf.leaf-rtl.next {
+  animation-name: leaf-turn-next-rtl;
+}
+.flip-leaf.leaf-rtl.prev {
+  animation-name: leaf-turn-prev-rtl;
+}
+
+@keyframes leaf-turn-next {
   0% {
-    transform: perspective(1400px) rotateY(0deg);
-    opacity: 1;
-  }
-  35% {
-    transform: perspective(1400px) rotateY(-7deg);
-    transform-origin: left center;
-    opacity: 0.75;
+    transform: rotateY(0deg);
   }
   100% {
-    transform: perspective(1400px) rotateY(0deg);
-    opacity: 1;
+    transform: rotateY(-180deg);
   }
 }
-@keyframes page-turn-prev {
+@keyframes leaf-turn-prev {
   0% {
-    transform: perspective(1400px) rotateY(0deg);
-    opacity: 1;
-  }
-  35% {
-    transform: perspective(1400px) rotateY(7deg);
-    transform-origin: right center;
-    opacity: 0.75;
+    transform: rotateY(-180deg);
   }
   100% {
-    transform: perspective(1400px) rotateY(0deg);
-    opacity: 1;
+    transform: rotateY(0deg);
   }
 }
-.page-turn-next {
-  animation: page-turn-next 0.3s ease-out;
+@keyframes leaf-turn-next-rtl {
+  0% {
+    transform: rotateY(0deg);
+  }
+  100% {
+    transform: rotateY(180deg);
+  }
 }
-.page-turn-prev {
-  animation: page-turn-prev 0.3s ease-out;
+@keyframes leaf-turn-prev-rtl {
+  0% {
+    transform: rotateY(180deg);
+  }
+  100% {
+    transform: rotateY(0deg);
+  }
+}
+
+.leaf-face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  overflow: hidden;
+}
+.leaf-face-back {
+  transform: rotateY(180deg);
+}
+
+/* palatte waqt pann par chalta hua saaya + khulti page par drop-shadow */
+.leaf-shade {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(to left, rgba(30, 20, 8, 0.2), rgba(30, 20, 8, 0) 55%);
+  animation: leaf-shade-arc 0.78s ease-in-out both;
+}
+.leaf-shade-rtl {
+  background: linear-gradient(to right, rgba(30, 20, 8, 0.2), rgba(30, 20, 8, 0) 55%);
+}
+.leaf-drop {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 30;
+  background: linear-gradient(to right, rgba(30, 20, 8, 0.22), rgba(30, 20, 8, 0) 55%);
+  animation: leaf-shade-arc 0.78s ease-in-out both;
+}
+.leaf-drop-rtl {
+  background: linear-gradient(to left, rgba(30, 20, 8, 0.22), rgba(30, 20, 8, 0) 55%);
+}
+@keyframes leaf-shade-arc {
+  0% {
+    opacity: 0;
+  }
+  40% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* pann ki peeth (back face) — asli register ke pann ka ulta side */
+.leaf-back-paper {
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0px,
+      transparent 43px,
+      rgba(107, 93, 73, 0.32) 43px,
+      rgba(107, 93, 73, 0.32) 44px
+    ),
+    var(--paper, #fdf9ee);
 }
 
 @keyframes highlight-flash {
@@ -443,12 +533,25 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .page-turn-next,
-  .page-turn-prev,
+  .flip-leaf,
+  .leaf-shade,
+  .leaf-drop,
   .animate-write-in,
   .animate-stamp-in,
   .highlight-flash {
     animation: none;
+  }
+  .flip-leaf.next {
+    transform: rotateY(-180deg);
+  }
+  .flip-leaf.prev {
+    transform: rotateY(0deg);
+  }
+  .flip-leaf.leaf-rtl.next {
+    transform: rotateY(180deg);
+  }
+  .flip-leaf.leaf-rtl.prev {
+    transform: rotateY(0deg);
   }
 }
 

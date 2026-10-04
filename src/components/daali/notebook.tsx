@@ -81,6 +81,9 @@ function useRowsPerPage(): number {
 // दाली उनके नंबर पर भेजी जा सकती है; तारीख़ column बहुत पहले हटी थी)
 const GRID = 'grid grid-cols-[2rem_1fr_5.2rem_1.9rem] sm:grid-cols-[2.4rem_minmax(0,2fr)_minmax(0,1.35fr)_minmax(0,0.9fr)_6.5rem_2.1rem]';
 
+// असली पलटने की अवधि (leaf-turn animation 0.78s) — safety timeout इससे थोड़ा आगे
+const FLIP_MS = 780;
+
 interface NotebookProps {
   onRenameEvent: () => void;
   onDeleteEvent: () => void;
@@ -176,7 +179,19 @@ export function Notebook({ onRenameEvent, onDeleteEvent, onPrint, onPdf, onHisto
   const updateEvent = useDaali((s) => s.updateEvent);
 
   const rowsPerPage = useRowsPerPage();
-  const [flip, setFlip] = useState<'next' | 'prev' | null>(null);
+  // असली notebook पलटना — palatte waqt ek pann (leaf) ghoomta hai:
+  // front = purani page ka snapshot, back = khaali ruled paper, neeche nayi page
+  const [flipState, setFlipState] = useState<{ dir: 'next' | 'prev'; from: number; to: number } | null>(null);
+  const flipTimer = useRef<number | null>(null);
+  const beginFlip = useCallback(
+    (dir: 'next' | 'prev', from: number, to: number) => {
+      if (!settings.pageAnimation) return;
+      setFlipState({ dir, from, to });
+      if (flipTimer.current) window.clearTimeout(flipTimer.current);
+      flipTimer.current = window.setTimeout(() => setFlipState(null), FLIP_MS + 220);
+    },
+    [settings.pageAnimation]
+  );
   const [newIds, setNewIds] = useState<Set<string>>(new Set());
   const knownIds = useRef<Set<string>>(new Set());
   const firstRender = useRef(true);
@@ -253,26 +268,24 @@ export function Notebook({ onRenameEvent, onDeleteEvent, onPrint, onPdf, onHisto
       const target = dir === 'next' ? page + 1 : page - 1;
       if (target < 1 || target > pageCount) return;
       setEditing(null);
+      setShareFor(null);
       setPage(target);
-      if (settings.pageAnimation) {
-        setFlip(dir);
-        setTimeout(() => setFlip(null), 320);
-      }
+      beginFlip(dir, page, target);
     },
-    [page, pageCount, setPage, settings.pageAnimation]
+    [page, pageCount, setPage, beginFlip]
   );
 
   const jumpTo = useCallback(
     (n: number) => {
       const target = Math.min(Math.max(1, n), pageCount);
-      if (target !== page && settings.pageAnimation) {
-        setFlip(target > page ? 'next' : 'prev');
-        setTimeout(() => setFlip(null), 320);
+      if (target !== page) {
+        setEditing(null);
+        setShareFor(null);
+        setPage(target);
+        beginFlip(target > page ? 'next' : 'prev', page, target);
       }
-      setEditing(null);
-      setPage(target);
     },
-    [page, pageCount, setPage, settings.pageAnimation]
+    [page, pageCount, setPage, beginFlip]
   );
 
   // kahin bhi khali line par click → wahin pen rakh do (writing line par le jao)
@@ -281,11 +294,13 @@ export function Notebook({ onRenameEvent, onDeleteEvent, onPrint, onPdf, onHisto
     setWriteAtFiller(null);
     if (writingPage !== page) {
       setPage(writingPage);
-      setTimeout(() => setWriteSignal((v) => v + 1), settings.pageAnimation ? 360 : 40);
+      beginFlip(writingPage > page ? 'next' : 'prev', page, writingPage);
+      // pann aadha palatne tak pen ready — speed feel deti hai
+      setTimeout(() => setWriteSignal((v) => v + 1), settings.pageAnimation ? 560 : 40);
     } else {
       setWriteSignal((v) => v + 1);
     }
-  }, [writingPage, page, setPage, settings.pageAnimation]);
+  }, [writingPage, page, setPage, beginFlip, settings.pageAnimation]);
 
   // ＋ button (bottom nav / top bar) → jump to the writing line and start writing.
   // Arrives as a window event so state updates happen in a callback, not in an effect body.
@@ -304,14 +319,16 @@ export function Notebook({ onRenameEvent, onDeleteEvent, onPrint, onPdf, onHisto
     const newTotal = st.allEntries.filter((e) => e.eventId === st.currentEventId).length;
     const wp = Math.floor(newTotal / rowsPerPage) + 1; // page holding the writing slot now
     if (wp !== page && wp <= Math.ceil((newTotal + 1) / rowsPerPage)) {
+      // page bhar gaya → ASLI COPY KI TARAH PALAT JAATA HAI
       setPage(wp);
-      setTimeout(() => setWriteSignal((v) => v + 1), settings.pageAnimation ? 360 : 40);
+      beginFlip('next', page, wp);
+      setTimeout(() => setWriteSignal((v) => v + 1), settings.pageAnimation ? 560 : 40);
     } else {
       // page adha bhara tha — pen agli khali line par turant ready
       // (filler line se likha ho to bhi row remount hoke yahin sulakti hai)
       setTimeout(() => setWriteSignal((v) => v + 1), 40);
     }
-  }, [rowsPerPage, page, setPage, settings.pageAnimation]);
+  }, [rowsPerPage, page, setPage, beginFlip, settings.pageAnimation]);
 
   // Keyboard page turning
   useEffect(() => {
@@ -342,8 +359,10 @@ export function Notebook({ onRenameEvent, onDeleteEvent, onPrint, onPdf, onHisto
     }
   };
 
-  const flipClass =
-    flip === 'next' ? 'page-turn-next' : flip === 'prev' ? 'page-turn-prev' : '';
+  const rtl = settings.language === 'ur';
+
+  // pann (leaf) ka content — palatne waqt upar ghoomta hua page
+  const leafPage = flipState ? (flipState.dir === 'next' ? flipState.from : flipState.to) : null;
 
   const scriptOptions: Array<{ v: 'hi' | 'ur' | 'off'; label: string }> = [
     { v: 'hi', label: t('scriptHi') },
@@ -446,9 +465,10 @@ export function Notebook({ onRenameEvent, onDeleteEvent, onPrint, onPdf, onHisto
         onTouchEnd={onTouchEnd}
         style={{ scrollbarWidth: 'thin' }}
       >
+        <div className="flip-stage relative flex min-h-full w-full max-w-3xl flex-col">
         <div
           key={page}
-          className={`paper flex min-h-full w-full max-w-3xl flex-col pb-2 ${flipClass}`}
+          className="paper flex min-h-full w-full flex-col pb-2"
           role="region"
           aria-label={`${t('daaliRegister')} — ${event.name}`}
         >
@@ -614,6 +634,40 @@ export function Notebook({ onRenameEvent, onDeleteEvent, onPrint, onPdf, onHisto
               </div>
             </div>
           </footer>
+        </div>
+
+        {/* ── असली पलटना: pann (leaf) ghoom kar nayi page kholti hai ── */}
+        {flipState && leafPage !== null && (
+          <>
+            <div className={`leaf-drop ${rtl ? 'leaf-drop-rtl' : ''}`} aria-hidden="true" />
+            <div
+              className={`flip-leaf ${flipState.dir} ${rtl ? 'leaf-rtl' : ''}`}
+              aria-hidden="true"
+              onAnimationEnd={(e) => {
+                if (e.target === e.currentTarget) setFlipState(null);
+              }}
+            >
+              <div className="leaf-face">
+                <div className="paper flex h-full w-full flex-col overflow-hidden pb-2">
+                  <LeafPageContent
+                    event={event}
+                    lang={settings.language}
+                    page={leafPage}
+                    rowsPerPage={rowsPerPage}
+                    sorted={sorted}
+                    total={total}
+                    totalSum={totalSum}
+                    itemCount={itemCount}
+                  />
+                </div>
+              </div>
+              <div className="leaf-face leaf-face-back">
+                <div className="leaf-back-paper" />
+              </div>
+              <div className={`leaf-shade ${rtl ? 'leaf-shade-rtl' : ''}`} />
+            </div>
+          </>
+        )}
         </div>
       </div>
 
@@ -911,5 +965,160 @@ function FillerRow({ onClick, label }: { onClick: () => void; label: string }) {
       <div />
       <div />
     </div>
+  );
+}
+
+// ─── पन्ने का STATIC snapshot — पलटते हुए pann (leaf) ke upar dikhta hai ────
+// Read-only: koi input, koi share strip nahi — bilkul wahi paper look, sirf
+// namma ke liye. Palatne ki 0.78s mein yahi content ghoomta dikhta hai.
+function LeafPageContent({
+  event,
+  lang,
+  page,
+  rowsPerPage,
+  sorted,
+  total,
+  totalSum,
+  itemCount,
+}: {
+  event: DaaliEvent;
+  lang: Language;
+  page: number;
+  rowsPerPage: number;
+  sorted: DaaliEntry[];
+  total: number;
+  totalSum: number;
+  itemCount: number;
+}) {
+  const t = useT();
+  const startIdx = (page - 1) * rowsPerPage;
+  const pageEntries = sorted.slice(startIdx, startIdx + rowsPerPage);
+  const fillerCount = Math.max(0, rowsPerPage - pageEntries.length);
+  const pageSum = pageEntries.reduce((a, e) => a + (e.amount || 0), 0);
+  const cashTotal = sorted.filter((e) => e.amount > 0).length;
+  const avg = cashTotal > 0 ? Math.round(totalSum / cashTotal) : 0;
+
+  return (
+    <>
+      <div className="paper-spine" />
+      <div className="paper-margin" />
+
+      <div className="absolute end-3 top-2 font-hand text-xs text-ink-soft">
+        {t('page')} {page}
+      </div>
+
+      <header className="px-4 pt-3 text-center sm:px-8">
+        {page === 1 ? (
+          <>
+            <h1 className="font-hand text-2xl font-bold text-ink sm:text-3xl">{t('daaliRegister')}</h1>
+            <div className="mx-auto mt-0.5 mb-1 h-px w-40 bg-ink/20" />
+            <div className="mt-2 text-[15px] leading-7 sm:mt-3">
+              <div className="text-ink">
+                <span className="text-ink-soft">{t('eventLabel')}: </span>
+                <span className="font-hand font-bold">{event.name}</span>
+              </div>
+              <div className="mt-0.5 grid grid-cols-1 gap-x-6 sm:grid-cols-2">
+                <div className="text-start sm:text-end">
+                  <span className="text-ink-soft">{t('dateLabel')}: </span>
+                  <span className="font-hand font-bold">{event.date ? isoToDisplayDate(event.date) : ''}</span>
+                </div>
+                <div className="text-start">
+                  <span className="text-ink-soft">{t('villageLabel')}: </span>
+                  <span className="font-hand font-bold">{event.location}</span>
+                </div>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="pt-1 text-end text-xs text-ink-soft">{event.name}</div>
+        )}
+      </header>
+
+      <div className="register-rows mt-3 flex-1">
+        <div className={`${GRID} border-b-2 border-ink/50 pb-1 text-[13px] font-bold text-ink`}>
+          <div className="text-center">{t('colCr')}</div>
+          <div>{t('colName')}</div>
+          <div className="hidden sm:block">{t('colVillage')}</div>
+          <div className="hidden sm:block">{t('colRelation')}</div>
+          <div className="text-end">{t('colAmount')}</div>
+        </div>
+
+        {pageEntries.map((entry, i) => {
+          const amt = entryAmountText(entry);
+          const sub = [entry.village, entry.relationship].filter(Boolean).join(' • ');
+          return (
+            <div key={entry.id} className={`ruled-row ${GRID} items-center text-[15px] text-ink`}>
+              <div className="text-center text-[13px] text-ink-soft">{String(startIdx + i + 1).padStart(2, '0')}</div>
+              <div className="min-w-0 px-0.5 py-1">
+                <div className={`truncate font-semibold leading-tight ${isArabicText(entry.name) ? 'urdu-text' : ''}`}>
+                  {entry.name}
+                  {entry.note && <span className="ml-1 text-xs text-ink-soft">✎</span>}
+                </div>
+                <div
+                  className={`truncate text-xs leading-tight text-ink-soft sm:hidden ${
+                    isArabicText(entry.village) || isArabicText(entry.relationship) ? 'urdu-text' : ''
+                  }`}
+                >
+                  {sub || '\u00A0'}
+                </div>
+              </div>
+              <div className={`hidden min-w-0 truncate px-0.5 text-sm sm:block ${isArabicText(entry.village) ? 'urdu-text' : ''}`}>
+                {entry.village || '—'}
+              </div>
+              <div className={`hidden min-w-0 truncate px-0.5 text-sm sm:block ${isArabicText(entry.relationship) ? 'urdu-text' : ''}`}>
+                {entry.relationship || '—'}
+              </div>
+              <div className="px-0.5 text-end">
+                {amt.cash ? (
+                  <span className="font-bold tabular-nums">{amt.text}</span>
+                ) : (
+                  <span className={`inline-block max-w-full truncate font-hand text-[15px] text-ink-soft ${isArabicText(amt.text) ? 'urdu-text' : ''}`}>
+                    🎁 {amt.text}
+                  </span>
+                )}
+              </div>
+              <div />
+            </div>
+          );
+        })}
+
+        {Array.from({ length: fillerCount }).map((_, i) => (
+          <div key={`leaf-fill-${page}-${i}`} className={`ruled-row ${GRID} items-center`}>
+            <div />
+            <div />
+            <div className="hidden sm:block" />
+            <div className="hidden sm:block" />
+            <div />
+            <div />
+          </div>
+        ))}
+      </div>
+
+      <footer className="mt-2 px-4 pb-1 sm:px-8">
+        <div className="border-t-2 border-ink/60 pt-2 text-center">
+          <div className="font-hand text-xl font-bold text-ink sm:text-2xl">
+            {t('totalPeople')}: {formatNumber(total)}
+            <span className="mx-2 text-margin-red">•</span>
+            {t('totalDaali')}: {formatRupees(totalSum)}
+            {itemCount > 0 && (
+              <>
+                <span className="mx-2 text-margin-red">•</span>
+                {t('itemCount')}: {formatNumber(itemCount)}
+              </>
+            )}
+          </div>
+          <div className="mt-0.5 flex items-center justify-center gap-4 text-xs text-ink-soft">
+            <span>
+              {t('pageTotal')}: {pageEntries.length} • {formatRupees(pageSum)}
+            </span>
+            {total > 0 && (
+              <span>
+                {t('average')}: {formatRupees(avg)}
+              </span>
+            )}
+          </div>
+        </div>
+      </footer>
+    </>
   );
 }

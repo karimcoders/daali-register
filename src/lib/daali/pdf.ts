@@ -1,7 +1,11 @@
-// ─── Real PDF download — a proper .pdf file, not just the print dialog ──────
-// Renders the register as A4 sheets in an off-screen container (inline hex
-// styles only — html2canvas cannot parse Tailwind v4's oklch colors), then
-// snapshots each sheet with html2canvas and assembles a jsPDF document.
+// ─── Real PDF download — register drawn DIRECTLY on Canvas 2D ───────────────
+// Pehle html2canvas se DOM ka snapshot lete the — phone par viewport/scroll/
+// devicePixelRatio/font-race ki wajah se PDF baar-baar kharab aati thi:
+// crop, blank pages, content andar khiskna (paanch baar user complaint).
+// Ab koi DOM capture NAHI: har A4 sheet Canvas 2D par khud draw hoti hai.
+// Geometry 100% deterministic — har device, har browser par bilkul ek jaisi.
+// Devanagari/Urdu shaping browser ke HarfBuzz se milti hai (canvas fillText
+// wahi shaping engine use karta hai jo DOM text use karta hai).
 'use client';
 
 import type { jsPDF } from 'jspdf';
@@ -16,11 +20,12 @@ import {
 } from './format';
 import { makeT } from './strings';
 
-const PAGE_W = 794; // A4 @96dpi
+const PAGE_W = 794; // A4 @96dpi logical units
 const PAGE_H = 1123;
+const SCALE = 2; // actual pixels 1588×2246 — ~192dpi, print-sharp
 const ROWS_PER_SHEET = 20;
 
-// paper palette (hex — html2canvas-safe)
+// paper palette (canvas fillStyle — hex strings, no CSS parsing involved)
 const C = {
   paper: '#fdf9ee',
   ink: '#241c12',
@@ -32,71 +37,6 @@ const C = {
 
 type TString = ReturnType<typeof makeT> extends (k: infer K) => string ? K : never;
 
-/**
- * html2canvas cannot parse modern CSS color functions (lab()/oklch()/oklab())
- * that Tailwind v4 theme values compute to in Chrome. Instead of mutating the
- * DOM, we temporarily wrap window.getComputedStyle so every value html2canvas
- * reads is already a plain rgb/keyword — 100% parseable, zero visual changes.
- */
-const MODERN_COLOR = /lab\(|oklch\(|lch\(|oklab\(|color\(/i;
-
-const SAFE_INK = 'rgb(36, 28, 18)';
-const SAFE_TRANSPARENT = 'rgba(0, 0, 0, 0)';
-
-const COLOR_VALUE_PROPS = new Set([
-  'color',
-  'backgroundColor',
-  'borderTopColor',
-  'borderRightColor',
-  'borderBottomColor',
-  'borderLeftColor',
-  'outlineColor',
-  'textDecorationColor',
-  'columnRuleColor',
-  'caretColor',
-  'WebkitTextStrokeColor',
-  'boxShadow',
-  'textShadow',
-  'backgroundImage',
-]);
-
-function safeColorValue(prop: string, raw: string): string {
-  if (!raw || !MODERN_COLOR.test(raw)) return raw;
-  if (prop === 'boxShadow' || prop === 'textShadow' || prop === 'backgroundImage') return 'none';
-  if (prop === 'color' || prop === 'WebkitTextStrokeColor' || prop === 'textDecorationColor') return SAFE_INK;
-  return SAFE_TRANSPARENT;
-}
-
-type ComputedStyleFn = (el: Element, pseudo?: string | null) => CSSStyleDeclaration;
-
-function installColorSafeComputedStyle(): () => void {
-  const w = window as unknown as { getComputedStyle: ComputedStyleFn } & Record<string, unknown>;
-  const orig = w.getComputedStyle.bind(w) as ComputedStyleFn;
-  const patched: ComputedStyleFn = (el, pseudo) => {
-    const cs = orig(el, pseudo ?? undefined);
-    return new Proxy(cs, {
-      get(target, prop) {
-        if (prop === 'getPropertyValue') {
-          return (name: string): string => {
-            const raw = target.getPropertyValue(name);
-            return safeColorValue(String(name), raw);
-          };
-        }
-        if (typeof prop === 'string' && COLOR_VALUE_PROPS.has(prop)) {
-          const raw: unknown = (target as unknown as Record<string, unknown>)[prop];
-          return typeof raw === 'string' ? safeColorValue(prop, raw) : raw;
-        }
-        const v = (target as unknown as Record<PropertyKey, unknown>)[prop];
-        return typeof v === 'function' ? (v as (...args: unknown[]) => unknown).bind(target) : v;
-      },
-    }) as CSSStyleDeclaration;
-  };
-  w.getComputedStyle = patched;
-  return () => {
-    w.getComputedStyle = orig;
-  };
-}
-
 function chunk<T>(arr: T[], n: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
@@ -104,31 +44,87 @@ function chunk<T>(arr: T[], n: number): T[][] {
   return out;
 }
 
-function el(tag: string, style: Partial<CSSStyleDeclaration>, text?: string): HTMLElement {
-  const e = document.createElement(tag);
-  Object.assign(e.style, style);
-  if (text !== undefined) e.textContent = text;
-  return e;
+// ── fonts ────────────────────────────────────────────────────────────────────
+// Screen par headings Kalam (handwriting) — PDF par bhi Kalam title ke liye,
+// body Noto Sans Devanagari (print-clear; Kalam ki जि/ने door se galat padhe
+// jaate the — purana user report). Urdu par Noto Nastaliq Urdu.
+function bodyFont(rtl: boolean, weight: 400 | 500 | 700, size: number): string {
+  return rtl
+    ? `${weight} ${size}px 'Noto Nastaliq Urdu', 'Noto Sans Devanagari', sans-serif`
+    : `${weight} ${size}px 'Noto Sans Devanagari', sans-serif`;
+}
+function handFont(rtl: boolean, weight: 400 | 700, size: number): string {
+  return rtl
+    ? `${weight} ${size}px 'Noto Nastaliq Urdu', 'Noto Sans Devanagari', sans-serif`
+    : `${weight} ${size}px 'Kalam', 'Noto Sans Devanagari', sans-serif`;
 }
 
-function bodyFont(rtl: boolean): string {
-  return rtl ? "'Noto Nastaliq Urdu', serif" : "'Noto Sans Devanagari', sans-serif";
+/**
+ * Web fonts unicode-range subsets mein hain. document.fonts.load(font) bina
+ * text ke sirf latin subset load karta hai (space ke liye) — canvas phir
+ * Devanagari ke liye system fallback (jo phone par missing ho sakta hai)
+ * use karega. Isliye hamesha representative text pass karo.
+ */
+const FONT_SAMPLE_HI = 'शुभ लाभ दाली रजिस्टर नाम गाँव रिश्ता रकम ₹0123456789';
+const FONT_SAMPLE_UR = 'شوبھ لابھ دالی رجسٹر نام رقم گاؤں رشتہ ₹0123456789';
+
+async function loadPdfFonts(rtl: boolean): Promise<void> {
+  const sample = rtl ? `${FONT_SAMPLE_UR} ${FONT_SAMPLE_HI}` : FONT_SAMPLE_HI;
+  const loads: Array<Promise<unknown>> = [
+    document.fonts.load("400 30px 'Kalam'", sample),
+    document.fonts.load("700 30px 'Kalam'", sample),
+    document.fonts.load("400 15px 'Noto Sans Devanagari'", sample),
+    document.fonts.load("500 15px 'Noto Sans Devanagari'", sample),
+    document.fonts.load("700 15px 'Noto Sans Devanagari'", sample),
+    document.fonts.load("400 14px 'Noto Nastaliq Urdu'", sample),
+    document.fonts.load("700 14px 'Noto Nastaliq Urdu'", sample),
+  ];
+  try {
+    await Promise.all(loads);
+    await document.fonts.ready;
+  } catch {
+    /* fonts API unavailable — system fallback chalega */
+  }
 }
 
-function handFont(rtl: boolean): string {
-  // PDF mein print-clear Devanagari — Kalam ki handwriting design par kuch
-  // akshar (जि / ने / से) door se galat padhe jaate the (user complaint).
-  // Screen par Kalam (copy jaisi likhawat), PDF file par Noto (sah, saaf).
-  return rtl ? "'Noto Nastaliq Urdu', serif" : "'Noto Sans Devanagari', sans-serif";
+// ── text helpers ─────────────────────────────────────────────────────────────
+function ellipsize(ctx: CanvasRenderingContext2D, text: string, maxW: number): string {
+  if (ctx.measureText(text).width <= maxW) return text;
+  const ELL = '…';
+  let lo = 0;
+  let hi = text.length;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (ctx.measureText(text.slice(0, mid) + ELL).width <= maxW) lo = mid;
+    else hi = mid - 1;
+  }
+  return text.slice(0, lo) + ELL;
 }
 
-function cellPad(el_: HTMLElement, side: 'left' | 'right'): HTMLElement {
-  el_.style.paddingLeft = side === 'left' ? '8px' : '2px';
-  el_.style.paddingRight = side === 'right' ? '8px' : '2px';
-  return el_;
+/** word-wrap into ≤2 lines (totals line kabhi page se bahar nahi jayega) */
+function wrap2Lines(ctx: CanvasRenderingContext2D, text: string, maxW: number): string[] {
+  if (ctx.measureText(text).width <= maxW) return [text];
+  const words = text.split(' ');
+  let line1 = '';
+  let i = 0;
+  while (i < words.length) {
+    const next = line1 ? `${line1} ${words[i]}` : words[i];
+    if (ctx.measureText(next).width > maxW && line1) break;
+    line1 = next;
+    i++;
+  }
+  const rest = words.slice(i).join(' ');
+  return [line1, ellipsize(ctx, rest, maxW)];
 }
 
-function buildSheet(opts: {
+// ── layout constants ─────────────────────────────────────────────────────────
+const CONTENT_L = 86; // red margin (64) + inner pad — DOM version jaisa
+const CONTENT_R = 764;
+const INNER_W = CONTENT_R - CONTENT_L;
+const COL_FR = [0.08, 0.34, 0.22, 0.16, 0.2]; // क्र, नाम, गाँव, रिश्ता, रकम
+
+// ── the sheet painter ────────────────────────────────────────────────────────
+function drawSheet(opts: {
   event: DaaliEvent;
   sheet: DaaliEntry[];
   sheetIndex: number;
@@ -138,228 +134,215 @@ function buildSheet(opts: {
   grandSum: number;
   itemCount: number;
   lang: Language;
-}): HTMLElement {
+}): HTMLCanvasElement {
   const { event, sheet, sheetIndex, sheetCount, serialStart, grandCount, grandSum, itemCount, lang } = opts;
   const t = makeT(lang) as (k: TString) => string;
   const rtl = lang === 'ur';
   const pageNum = `${t('page')} ${sheetIndex + 1}/${sheetCount}`;
 
-  const page = el('div', {
-    width: `${PAGE_W}px`,
-    height: `${PAGE_H}px`,
-    background: C.paper,
-    color: C.ink,
-    fontFamily: bodyFont(rtl),
-    fontSize: '15px',
-    lineHeight: '1.5',
-    position: 'relative',
-    overflow: 'hidden',
-    boxSizing: 'border-box',
-    padding: '34px 30px 26px',
-    textAlign: rtl ? 'right' : 'left',
-  });
+  const canvas = document.createElement('canvas');
+  canvas.width = PAGE_W * SCALE;
+  canvas.height = PAGE_H * SCALE;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('daali-pdf-canvas-unavailable');
+  ctx.scale(SCALE, SCALE);
+  ctx.direction = rtl ? 'rtl' : 'ltr';
+  ctx.textBaseline = 'middle';
 
-  // red margin line (physical side depends on direction) + faint ruled column
-  page.appendChild(
-    el('div', {
-      position: 'absolute',
-      top: '0',
-      bottom: '0',
-      [rtl ? 'right' : 'left']: '64px',
-      width: '0px',
-      borderRight: `2px solid ${C.red}`,
-      opacity: '0.55',
-    } as Partial<CSSStyleDeclaration>)
-  );
-  page.appendChild(
-    el('div', {
-      position: 'absolute',
-      top: '0',
-      bottom: '0',
-      [rtl ? 'left' : 'right']: '26px',
-      width: '0px',
-      borderRight: `1.5px solid ${C.red}`,
-      opacity: '0.35',
-    } as Partial<CSSStyleDeclaration>)
-  );
+  // paper
+  ctx.fillStyle = C.paper;
+  ctx.fillRect(0, 0, PAGE_W, PAGE_H);
 
-  const inner = el('div', { position: 'relative', [rtl ? 'paddingRight' : 'paddingLeft']: '56px' } as Partial<CSSStyleDeclaration>);
-  page.appendChild(inner);
+  // red margin lines — physical side depends on direction (DOM version jaisa)
+  ctx.globalAlpha = 0.55;
+  ctx.strokeStyle = C.red;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(rtl ? PAGE_W - 64 : 64, 0);
+  ctx.lineTo(rtl ? PAGE_W - 64 : 64, PAGE_H);
+  ctx.stroke();
+  ctx.globalAlpha = 0.35;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(rtl ? 26 : PAGE_W - 26, 0);
+  ctx.lineTo(rtl ? 26 : PAGE_W - 26, PAGE_H);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
 
-  // header (first sheet only) — like the notebook cover heading
+  // column rects — LTR order; RTL par mirror (रकम left, क्र right)
+  const rects: Array<{ x: number; w: number }> = [];
+  let cx = CONTENT_L;
+  for (const fr of COL_FR) {
+    rects.push({ x: cx, w: fr * INNER_W });
+    cx += fr * INNER_W;
+  }
+  const cols = [t('colCr'), t('colName'), t('colVillage'), t('colRelation'), t('colAmount')];
+  if (rtl) {
+    rects.reverse();
+    cols.reverse();
+  }
+
+  const rowH = rtl ? 44 : 40;
+  // header block heights
+  const headH = sheetIndex === 0 ? (rtl ? 116 : 122) : 64;
+  const rowsTop = 34 + headH;
+  const rowsEnd = rowsTop + ROWS_PER_SHEET * rowH;
+
+  // ── header ──
   if (sheetIndex === 0) {
-    const head = el('div', { textAlign: 'center', marginBottom: '10px' });
-    head.appendChild(
-      el(
-        'div',
-        { fontFamily: handFont(rtl), fontSize: '30px', fontWeight: '700', lineHeight: rtl ? '1.9' : '1.3' },
-        t('daaliRegister')
-      )
-    );
-    head.appendChild(el('div', { fontSize: '14px', color: C.soft, marginTop: '4px' }, '―'));
-    const meta = el('div', { fontSize: '16px', marginTop: '6px' });
+    const cxm = (CONTENT_L + CONTENT_R) / 2;
+    ctx.fillStyle = C.ink;
+    ctx.font = handFont(rtl, 700, rtl ? 24 : 30);
+    ctx.textAlign = 'center';
+    ctx.fillText(t('daaliRegister'), cxm, 34 + (rtl ? 24 : 28));
+    // thin divider under the title
+    ctx.strokeStyle = 'rgba(36,28,18,0.22)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cxm - 80, 34 + (rtl ? 48 : 54));
+    ctx.lineTo(cxm + 80, 34 + (rtl ? 48 : 54));
+    ctx.stroke();
+    // event meta — कार्यक्रम • तारीख़ • गाँव
     const dateStr = event.date
       ? `${t('dateLabel')}: ${lang === 'hi' ? isoToHindiDate(event.date) || isoToDisplayDate(event.date) : isoToDisplayDate(event.date)}`
       : '';
     const locStr = event.location ? `${t('villageLabel')}: ${event.location}` : '';
-    meta.textContent = [`${t('eventLabel')}: ${event.name}`, dateStr, locStr].filter(Boolean).join('  •  ');
-    head.appendChild(meta);
-    inner.appendChild(head);
+    const meta = [`${t('eventLabel')}: ${event.name}`, dateStr, locStr].filter(Boolean).join('  •  ');
+    ctx.fillStyle = C.ink;
+    ctx.font = bodyFont(rtl, 500, rtl ? 14 : 16);
+    ctx.textAlign = 'center';
+    ctx.fillText(ellipsize(ctx, meta, INNER_W), cxm, 34 + (rtl ? 84 : 88));
   } else {
-    const meta = el('div', { fontSize: '13px', color: C.soft, marginBottom: '8px', textAlign: rtl ? 'left' : 'right' }, `${event.name} — ${pageNum}`);
-    inner.appendChild(meta);
+    ctx.fillStyle = C.soft;
+    ctx.font = bodyFont(rtl, 400, 13);
+    ctx.textAlign = rtl ? 'left' : 'right';
+    ctx.fillText(`${event.name} — ${pageNum}`, rtl ? CONTENT_L : CONTENT_R, 34 + 18);
   }
 
-  // column header — 5 columns (तारीख़ column hati: zyada jagah naam/village ko)
-  const widths = ['8%', '34%', '22%', '16%', '20%'];
-  const cols = [t('colCr'), t('colName'), t('colVillage'), t('colRelation'), t('colAmount')];
-  const headerRow = el('div', {
-    display: 'flex',
-    borderBottom: `2px solid ${C.lineBold}`,
-    paddingBottom: '4px',
-    fontWeight: '700',
-    fontSize: '14px',
-  });
-  cols.forEach((c, i) => {
-    const d = el('div', { width: widths[i], boxSizing: 'border-box' }, c);
-    if (i === 0) d.style.textAlign = 'center';
-    else if (i === 4) d.style.textAlign = rtl ? 'left' : 'right';
-    headerRow.appendChild(d);
-  });
-  inner.appendChild(headerRow);
-
-  // rows — ruled lines, empty rows included so it looks like a register
-  const rowH = 40;
-  const rowStyle: Partial<CSSStyleDeclaration> = {
-    display: 'flex',
-    alignItems: 'center',
-    borderBottom: `1px solid ${C.line}`,
-    height: `${rowH}px`,
-    fontSize: '15px',
-  };
-  const makeRow = (content: ((d: HTMLElement, i: number) => void) | null) => {
-    const row = el('div', rowStyle);
-    for (let i = 0; i < 5; i++) {
-      const d = el('div', { width: widths[i], boxSizing: 'border-box', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' });
-      if (i === 0) d.style.textAlign = 'center';
-      else if (i === 4) d.style.textAlign = rtl ? 'left' : 'right';
-      cellPad(d, rtl ? 'right' : 'left');
-      if (content) content(d, i);
-      row.appendChild(d);
+  // ── column header ──
+  const colHeadY = rowsTop - 16;
+  ctx.fillStyle = C.ink;
+  ctx.font = bodyFont(rtl, 700, 14);
+  cols.forEach((label, i) => {
+    const r = rects[i];
+    let align: CanvasTextAlign;
+    let x: number;
+    if (i === (rtl ? 4 : 0)) {
+      // क्र — center
+      align = 'center';
+      x = r.x + r.w / 2;
+    } else if (label === t('colAmount')) {
+      align = rtl ? 'left' : 'right';
+      x = rtl ? r.x + 6 : r.x + r.w - 6;
+    } else {
+      align = rtl ? 'right' : 'left';
+      x = rtl ? r.x + r.w - 6 : r.x + 6;
     }
-    return row;
+    ctx.textAlign = align;
+    ctx.fillText(label, x, colHeadY);
+  });
+  // header underline (bold rule — real register column line)
+  ctx.strokeStyle = C.lineBold;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(CONTENT_L, rowsTop - 4);
+  ctx.lineTo(CONTENT_R, rowsTop - 4);
+  ctx.stroke();
+
+  // ── rows ──
+  const drawRowLine = (y: number) => {
+    ctx.strokeStyle = C.line;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(CONTENT_L, y);
+    ctx.lineTo(CONTENT_R, y);
+    ctx.stroke();
   };
 
   sheet.forEach((entry, i) => {
+    const top = rowsTop + i * rowH;
+    const midY = top + rowH / 2 + (rtl ? 3 : 0); // Nastaliq thoda neeche baithta hai
     const amt = entryAmountText(entry);
-    inner.appendChild(
-      makeRow((d, col) => {
-        if (col === 0) d.textContent = String(serialStart + i);
-        else if (col === 1) {
-          d.textContent = entry.name + (entry.note ? ` (${entry.note})` : '');
-          d.style.fontWeight = '600';
-        } else if (col === 2) d.textContent = entry.village || '—';
-        else if (col === 3) d.textContent = entry.relationship || '—';
-        else {
-          d.textContent = amt.text;
-          d.style.fontWeight = '700';
-          if (!amt.cash) {
-            d.style.fontFamily = handFont(rtl);
-            d.style.color = C.soft;
-          }
-        }
-      })
-    );
-  });
+    const nameText = entry.name + (entry.note ? ` (${entry.note})` : '');
 
-  // empty ruled rows so the sheet looks like a real register page
-  const emptyRows = Math.max(0, ROWS_PER_SHEET - sheet.length);
-  for (let i = 0; i < emptyRows; i++) inner.appendChild(makeRow(null));
-
-  // footer — grand total on its own WRAPPING line (flex once clipped long
-  // totals at the page edge — कुल दाली: ₹1,23,456 • नेवता… got cut), page
-  // number on a separate small line below. Nothing can overflow now.
-  const foot = el('div', {
-    borderTop: `2px solid ${C.lineBold}`,
-    marginTop: '10px',
-    paddingTop: '8px',
-    fontFamily: handFont(rtl),
-    width: '100%',
-    boxSizing: 'border-box',
-  });
-  if (sheetIndex === sheetCount - 1) {
-    const tot = el(
-      'div',
+    // values in LTR column order: [serial, name, village, relation, amount]
+    const values: Array<{ text: string; font: string; color: string }> = [
+      { text: String(serialStart + i), font: bodyFont(rtl, 400, 13), color: C.soft },
+      { text: nameText, font: bodyFont(rtl, 500, rtl ? 14 : 15), color: C.ink },
+      { text: entry.village || '—', font: bodyFont(rtl, 400, rtl ? 13 : 14), color: C.ink },
+      { text: entry.relationship || '—', font: bodyFont(rtl, 400, rtl ? 13 : 14), color: C.ink },
       {
-        fontSize: '16px',
-        fontWeight: '700',
-        lineHeight: rtl ? '2' : '1.55',
-        textAlign: rtl ? 'left' : 'right',
-        whiteSpace: 'normal',
-        overflowWrap: 'break-word',
-        wordBreak: 'break-word',
+        text: amt.text || '—',
+        font: amt.cash ? bodyFont(rtl, 700, rtl ? 14 : 15) : handFont(rtl, 400, rtl ? 14 : 15),
+        color: amt.cash ? C.ink : C.soft,
       },
-      `${t('totalPeople')}: ${formatNumber(grandCount)} • ${t('totalDaali')}: ${formatRupees(grandSum)}` +
-        (itemCount > 0 ? ` • ${t('itemCount')}: ${formatNumber(itemCount)}` : '')
-    );
-    foot.appendChild(tot);
+    ];
+    const vr = rtl ? [...values].reverse() : values;
+
+    vr.forEach((v, i) => {
+      const r = rects[i];
+      let align: CanvasTextAlign;
+      let x: number;
+      if (i === (rtl ? 4 : 0)) {
+        align = 'center';
+        x = r.x + r.w / 2;
+      } else if (i === (rtl ? 0 : 4)) {
+        // रकम column — trailing edge
+        align = rtl ? 'left' : 'right';
+        x = rtl ? r.x + 6 : r.x + r.w - 6;
+      } else {
+        align = rtl ? 'right' : 'left';
+        x = rtl ? r.x + r.w - 6 : r.x + 6;
+      }
+      ctx.font = v.font;
+      ctx.fillStyle = v.color;
+      ctx.textAlign = align;
+      const maxW = r.w - 12;
+      ctx.fillText(ellipsize(ctx, v.text, maxW), x, midY, maxW);
+    });
+
+    drawRowLine(top + rowH);
+  });
+
+  // khali ruled rows — register jaisa poora page
+  for (let i = sheet.length; i < ROWS_PER_SHEET; i++) {
+    drawRowLine(rowsTop + (i + 1) * rowH);
   }
-  foot.appendChild(
-    el(
-      'div',
-      {
-        fontSize: '13px',
-        color: C.soft,
-        marginTop: '2px',
-        textAlign: rtl ? 'right' : 'left',
-        whiteSpace: 'normal',
-        overflowWrap: 'break-word',
-      },
-      pageNum
-    )
-  );
-  inner.appendChild(foot);
 
-  return page;
+  // ── footer ──
+  const footTop = rowsEnd + 10;
+  ctx.strokeStyle = C.lineBold;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(CONTENT_L, footTop);
+  ctx.lineTo(CONTENT_R, footTop);
+  ctx.stroke();
+
+  let y = footTop + 26;
+  if (sheetIndex === sheetCount - 1) {
+    const tot =
+      `${t('totalPeople')}: ${formatNumber(grandCount)} • ${t('totalDaali')}: ${formatRupees(grandSum)}` +
+      (itemCount > 0 ? ` • ${t('itemCount')}: ${formatNumber(itemCount)}` : '');
+    ctx.font = handFont(rtl, 700, 16);
+    ctx.fillStyle = C.ink;
+    ctx.textAlign = rtl ? 'left' : 'right';
+    const lines = wrap2Lines(ctx, tot, INNER_W);
+    for (const ln of lines) {
+      ctx.fillText(ln, rtl ? CONTENT_L : CONTENT_R, y);
+      y += 24;
+    }
+  }
+  ctx.fillStyle = C.soft;
+  ctx.font = bodyFont(rtl, 400, 13);
+  ctx.textAlign = rtl ? 'right' : 'left';
+  ctx.fillText(pageNum, rtl ? CONTENT_R : CONTENT_L, Math.max(y + 2, footTop + 26));
+
+  return canvas;
 }
 
-/** how the PDF reached the user — 'saved' = anchor download, 'shared' = share sheet, 'opened' = new tab */
+// ── save chain (proven) ──────────────────────────────────────────────────────
 export type PdfSaveResult = { how: 'shared' | 'saved' | 'opened'; url: string; filename: string; file?: File };
 
-/**
- * khali/blank capture detection — kabhi-kabhi phone par html2canvas fonts/
- * paint settle hone se PEHLE snapshot le leta hai aur poori page safed aa jaati
- * hai ("pdf sahi nahi"). Sampled pixel test: ~99.5% ek jaise pixel = blank.
- */
-function canvasLooksBlank(canvas: HTMLCanvasElement): boolean {
-  try {
-    const ctx = canvas.getContext('2d');
-    if (!ctx || canvas.width === 0 || canvas.height === 0) return false;
-    const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const r0 = data[0];
-    const g0 = data[1];
-    const b0 = data[2];
-    let n = 0;
-    let same = 0;
-    for (let i = 0; i < data.length; i += 4 * 997) {
-      n++;
-      const dr = Math.abs(data[i] - r0);
-      const dg = Math.abs(data[i + 1] - g0);
-      const db = Math.abs(data[i + 2] - b0);
-      if (dr + dg + db < 14) same++;
-    }
-    return n > 0 && same / n > 0.995;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Mobile-safe PDF save — pdf.save() alone fails silently in many phone
- * browsers (in-app webviews ignore the download attribute; older iOS cannot
- * save blobs). Chain: share sheet → anchor download → open in a new tab.
- * The blob URL stays alive for 2 minutes so the fallback toast link works.
- */
 async function savePdfFile(pdf: jsPDF, filename: string): Promise<PdfSaveResult> {
   const blob = pdf.output('blob');
   const url = URL.createObjectURL(blob);
@@ -402,127 +385,51 @@ async function savePdfFile(pdf: jsPDF, filename: string): Promise<PdfSaveResult>
   }
 }
 
+// ── main ─────────────────────────────────────────────────────────────────────
 export async function downloadRegisterPdf(
   event: DaaliEvent,
   entries: DaaliEntry[],
   lang: Language,
   onProgress?: (done: number, total: number) => void
 ): Promise<PdfSaveResult> {
-  const [{ jsPDF }, html2canvasMod] = await Promise.all([import('jspdf'), import('html2canvas')]);
-  const html2canvas = html2canvasMod.default;
-
-  // fonts pehle poori tarah load hon — warna capture mein text toota-hua aata hai
-  // (mobile pe font async load hota hai, ye race real phones par hoti hai)
-  try {
-    await Promise.all([
-      document.fonts.load("700 30px 'Kalam'"),
-      document.fonts.load("400 15px 'Noto Sans Devanagari'"),
-      document.fonts.load("500 15px 'Noto Sans Devanagari'"),
-      document.fonts.load("700 30px 'Noto Sans Devanagari'"),
-      document.fonts.load("400 15px 'Noto Nastaliq Urdu'"),
-    ]);
-    await document.fonts.ready;
-  } catch {
-    /* fonts API unavailable — browser fallback chal jayega */
-  }
+  const [{ jsPDF }] = await Promise.all([import('jspdf')]);
+  await loadPdfFonts(lang === 'ur');
 
   const grandCount = entries.length;
   const grandSum = entries.reduce((a, e) => a + (e.amount || 0), 0);
   const itemCount = entries.filter((e) => e.amount <= 0 && (e.item || '').trim() !== '').length;
-
   const sheets = chunk(entries, ROWS_PER_SHEET);
-  const container = document.createElement('div');
-  container.setAttribute('aria-hidden', 'true');
-  // ⚠️ position: ABSOLUTE hai, fixed NAHI — fixed element ka capture scroll/
-  // visual-viewport offset par shift ho jata tha (phone par PDF ka upar ka
-  // hisaab kat jana — user report). Absolute = document coordinates, clone
-  // mein bhi wahi — kisi bhi scroll position par capture pakka sahi.
-  Object.assign(container.style, {
-    position: 'absolute',
-    top: '0',
-    left: '-10000px',
-    width: `${PAGE_W}px`,
-    zIndex: '-1',
-    background: C.paper,
-  } as Partial<CSSStyleDeclaration>);
-  document.body.appendChild(container);
 
-  // Every value html2canvas reads through getComputedStyle is now parseable —
-  // no DOM mutation needed.
-  const restoreComputedStyle = installColorSafeComputedStyle();
+  const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4', compress: true });
+  const W = pdf.internal.pageSize.getWidth();
+  const H = pdf.internal.pageSize.getHeight();
 
-  try {
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4', compress: true });
-    const W = pdf.internal.pageSize.getWidth();
-    const H = pdf.internal.pageSize.getHeight();
-    for (let i = 0; i < sheets.length; i++) {
-      onProgress?.(i, sheets.length);
-      // ek waqt mein EK hi sheet DOM mein — phone ki memory kam kharch, document
-      // scroll height badhta nahi, aur capture geometry bilkul deterministic
-      const source = buildSheet({
-        event,
-        sheet: sheets[i],
-        sheetIndex: i,
-        sheetCount: sheets.length,
-        serialStart: i * ROWS_PER_SHEET + 1,
-        grandCount,
-        grandSum,
-        itemCount,
-        lang,
-      });
-      container.appendChild(source);
-      let canvas: HTMLCanvasElement;
-      try {
-        canvas = await html2canvas(source, {
-          scale: 2,
-          backgroundColor: C.paper,
-          useCORS: true,
-          logging: false,
-          windowWidth: PAGE_W,
-          width: PAGE_W,
-          height: PAGE_H,
-        });
-      } catch {
-        // phone par bade sheet mein ek baar fail ho sakta hai — kam quality se dobara
-        canvas = await html2canvas(source, {
-          scale: 1,
-          backgroundColor: C.paper,
-          useCORS: true,
-          logging: false,
-          windowWidth: PAGE_W,
-          width: PAGE_W,
-          height: PAGE_H,
-        });
-      }
-      // blank capture (phone paint race) — kam quality se dobara, phir bhi khali
-      // hai to error do: khali PDF dene se behtar hai ki user ko pata chale
-      if (canvasLooksBlank(canvas)) {
-        canvas = await html2canvas(source, {
-          scale: 1,
-          backgroundColor: C.paper,
-          useCORS: true,
-          logging: false,
-          windowWidth: PAGE_W,
-          width: PAGE_W,
-          height: PAGE_H,
-        });
-        if (canvasLooksBlank(canvas)) {
-          throw new Error('daali-pdf-blank-capture');
-        }
-      }
-      container.removeChild(source);
-      const img = canvas.toDataURL('image/jpeg', 0.9);
-      if (i > 0) pdf.addPage();
-      pdf.addImage(img, 'JPEG', 0, 0, W, H);
-    }
-    const safeName = (event.name || 'daali')
-      .replace(/[\\/:*?"<>|]+/g, '')
-      .trim()
-      .replace(/\s+/g, '-')
-      .slice(0, 40);
-    return await savePdfFile(pdf, `daali-${safeName}-${backupStamp()}.pdf`);
-  } finally {
-    container.remove();
-    restoreComputedStyle();
+  for (let i = 0; i < sheets.length; i++) {
+    onProgress?.(i, sheets.length);
+    const canvas = drawSheet({
+      event,
+      sheet: sheets[i],
+      sheetIndex: i,
+      sheetCount: sheets.length,
+      serialStart: i * ROWS_PER_SHEET + 1,
+      grandCount,
+      grandSum,
+      itemCount,
+      lang,
+    });
+    const img = canvas.toDataURL('image/jpeg', 0.92);
+    if (i > 0) pdf.addPage();
+    // poori sheet poori A4 par — koi offset nahi, koi scaling nahi, koi
+    // "content andar khiskna" possible hi nahi (sirf addImage 0,0,W,H)
+    pdf.addImage(img, 'JPEG', 0, 0, W, H);
+    canvas.width = 0; // free memory immediately (phone RAM friendly)
+    canvas.height = 0;
   }
+
+  const safeName = (event.name || 'daali')
+    .replace(/[\\/:*?"<>|]+/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .slice(0, 40);
+  return await savePdfFile(pdf, `daali-${safeName}-${backupStamp()}.pdf`);
 }
