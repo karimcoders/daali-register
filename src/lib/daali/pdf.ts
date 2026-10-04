@@ -116,7 +116,10 @@ function bodyFont(rtl: boolean): string {
 }
 
 function handFont(rtl: boolean): string {
-  return rtl ? "'Noto Nastaliq Urdu', serif" : "'Kalam', cursive";
+  // PDF mein print-clear Devanagari — Kalam ki handwriting design par kuch
+  // akshar (जि / ने / से) door se galat padhe jaate the (user complaint).
+  // Screen par Kalam (copy jaisi likhawat), PDF file par Noto (sah, saaf).
+  return rtl ? "'Noto Nastaliq Urdu', serif" : "'Noto Sans Devanagari', sans-serif";
 }
 
 function cellPad(el_: HTMLElement, side: 'left' | 'right'): HTMLElement {
@@ -414,6 +417,8 @@ export async function downloadRegisterPdf(
     await Promise.all([
       document.fonts.load("700 30px 'Kalam'"),
       document.fonts.load("400 15px 'Noto Sans Devanagari'"),
+      document.fonts.load("500 15px 'Noto Sans Devanagari'"),
+      document.fonts.load("700 30px 'Noto Sans Devanagari'"),
       document.fonts.load("400 15px 'Noto Nastaliq Urdu'"),
     ]);
     await document.fonts.ready;
