@@ -168,9 +168,9 @@ export function DaaliApp() {
   if (locked) return <PinLock />;
 
   return (
-    <div className="no-print flex min-h-dvh flex-col">
+    <div className="no-print flex h-dvh flex-col overflow-hidden">
       <div
-        className="flex-1"
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto"
         style={{ paddingBottom: 'calc(4rem + env(safe-area-inset-bottom, 0px))' }}
       >
         {view === 'home' ? (

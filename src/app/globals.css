@@ -487,6 +487,153 @@
   }
 }
 
+/* ─── Book spread (desktop ≥1024px) — असली खुली रजिस्टर जैसा: दो पन्ने ──────
+   एक साथ दिखते हैं (बायाँ + दायाँ), बीच में spine/gutter, और पलटने पर
+   दायाँ पन्ना spine के दायरे में घूमकर बाईं ओर जा लेटता है — बिल्कुल असली
+   notebook के पलटने जैसा। leaf के अगले/पिछले चेहरे = असली पन्नों का content. */
+.book {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  min-height: 100%;
+}
+.book-half {
+  position: relative;
+  width: 50%;
+  min-width: 0;
+  display: flex;
+}
+.book-half .paper {
+  width: 100%;
+}
+.book-half-first .paper {
+  border-radius: 12px 4px 4px 12px;
+}
+.book-half-second .paper {
+  border-radius: 4px 12px 12px 4px;
+}
+/* बाएँ पन्ने की binding दाईं ओर (बीच में) — असली किताब जैसा */
+.book-half-first .paper-spine {
+  left: auto;
+  right: 0;
+  border-radius: 0 12px 12px 0;
+  background: linear-gradient(
+    to left,
+    rgba(110, 80, 35, 0.2),
+    rgba(110, 80, 35, 0.07) 45%,
+    transparent
+  );
+}
+.dark .book-half-first .paper-spine {
+  background: linear-gradient(
+    to left,
+    rgba(0, 0, 0, 0.26),
+    rgba(0, 0, 0, 0.09) 45%,
+    transparent
+  );
+}
+/* बीच की नाली (gutter) — दोनों पन्नों के मिलन की गहरी धारी */
+.book-gutter {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 34px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  z-index: 25;
+  background: linear-gradient(
+    to right,
+    rgba(30, 20, 8, 0.02),
+    rgba(30, 20, 8, 0.07) 32%,
+    rgba(30, 20, 8, 0.2) 50%,
+    rgba(30, 20, 8, 0.07) 68%,
+    rgba(30, 20, 8, 0.02)
+  );
+}
+/* book का पलटता pann — दाएँ आधे पर, spine (बीच) के दायरे में घूमता है */
+.book-leaf {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 50%;
+  transform-origin: left center;
+  transform-style: preserve-3d;
+  pointer-events: none;
+  z-index: 40;
+  will-change: transform;
+}
+.book-leaf.next {
+  animation: leaf-turn-next 0.82s cubic-bezier(0.58, 0.04, 0.32, 1) both;
+}
+.book-leaf.prev {
+  animation: leaf-turn-prev 0.82s cubic-bezier(0.58, 0.04, 0.32, 1) both;
+}
+.book-leaf.leaf-rtl {
+  left: auto;
+  right: 50%;
+  transform-origin: right center;
+}
+.book-leaf.leaf-rtl.next {
+  animation-name: leaf-turn-next-rtl;
+}
+.book-leaf.leaf-rtl.prev {
+  animation-name: leaf-turn-prev-rtl;
+}
+/* book leaf के चेहरों के गोल कोने — बाहर वाला किनारा गोल */
+.book-leaf .leaf-face .paper {
+  border-radius: 4px 12px 12px 4px;
+}
+.book-leaf .leaf-face-back .paper {
+  border-radius: 4px 12px 12px 4px; /* 180° पलटा चेहरा — CSS दायाँ = दृश्य बायाँ */
+}
+.book-leaf.leaf-rtl .leaf-face .paper,
+.book-leaf.leaf-rtl .leaf-face-back .paper {
+  border-radius: 12px 4px 4px 12px;
+}
+/* पलटते pann पर साया spine की ओर गहरा हो */
+.book-leaf .leaf-shade {
+  background: linear-gradient(to right, rgba(30, 20, 8, 0.2), rgba(30, 20, 8, 0) 55%);
+}
+.book-leaf.leaf-rtl .leaf-shade {
+  background: linear-gradient(to left, rgba(30, 20, 8, 0.2), rgba(30, 20, 8, 0) 55%);
+}
+/* book halves में हल्की कॉम्पैक्ट स्पेसिंग (दो पन्ने साथ आते हैं) */
+.book .register-rows {
+  padding-inline-start: 3.4rem;
+  padding-inline-end: 0.9rem;
+}
+.book .paper-margin {
+  left: 2.5rem;
+}
+[dir='rtl'] .book .paper-margin {
+  left: auto;
+  right: 2.5rem;
+}
+[dir='rtl'] .book .register-rows {
+  padding-inline-end: 3.4rem;
+  padding-inline-start: 0.9rem;
+}
+[dir='rtl'] .book-half-first .paper {
+  border-radius: 4px 12px 12px 4px;
+}
+[dir='rtl'] .book-half-second .paper {
+  border-radius: 12px 4px 4px 12px;
+}
+[dir='rtl'] .book-half-first .paper-spine {
+  left: 0;
+  right: auto;
+  border-radius: 12px 0 0 12px;
+  background: linear-gradient(
+    to right,
+    rgba(110, 80, 35, 0.2),
+    rgba(110, 80, 35, 0.07) 45%,
+    transparent
+  );
+}
+
 /* pann ki peeth (back face) — asli register ke pann ka ulta side */
 .leaf-back-paper {
   position: absolute;
@@ -534,6 +681,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .flip-leaf,
+  .book-leaf,
   .leaf-shade,
   .leaf-drop,
   .animate-write-in,
@@ -541,16 +689,20 @@
   .highlight-flash {
     animation: none;
   }
-  .flip-leaf.next {
+  .flip-leaf.next,
+  .book-leaf.next {
     transform: rotateY(-180deg);
   }
-  .flip-leaf.prev {
+  .flip-leaf.prev,
+  .book-leaf.prev {
     transform: rotateY(0deg);
   }
-  .flip-leaf.leaf-rtl.next {
+  .flip-leaf.leaf-rtl.next,
+  .book-leaf.leaf-rtl.next {
     transform: rotateY(180deg);
   }
-  .flip-leaf.leaf-rtl.prev {
+  .flip-leaf.leaf-rtl.prev,
+  .book-leaf.leaf-rtl.prev {
     transform: rotateY(0deg);
   }
 }
@@ -621,9 +773,19 @@ input[type='date']::-webkit-calendar-picker-indicator {
 }
 
 /* register rows padding — logical, so the red margin side flips in RTL */
+/* खाली जगह में भी ruled लाइनें नीचे तक — असली रजिस्टर के पन्ने जैसा:
+   rows बराबर फैलकर पूरे pann को भरते हैं */
 .register-rows {
+  display: flex;
+  flex-direction: column;
   padding-inline-start: 3.9rem;
   padding-inline-end: 0.75rem;
+}
+.register-rows > * {
+  flex-grow: 1;
+}
+.register-rows > .reg-head {
+  flex-grow: 0;
 }
 @media (min-width: 640px) {
   .register-rows {
