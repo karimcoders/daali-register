@@ -61,7 +61,7 @@ export interface BackupFile {
 }
 
 /** One recorded change in the register's history (हिस्ट्री) */
-export type HistoryAction = 'add' | 'edit' | 'delete' | 'renameEvent' | 'editEvent' | 'deleteEvent';
+export type HistoryAction = 'add' | 'edit' | 'delete' | 'addEvent' | 'renameEvent' | 'editEvent' | 'deleteEvent';
 
 export interface HistoryChange {
   /** neutral field key — the UI translates it (fName, fAmount…) */

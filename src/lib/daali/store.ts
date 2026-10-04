@@ -284,6 +284,14 @@ export const useDaali = create<DaaliState>((set, get) => {
     } catch {
       set({ idbOk: false });
     }
+    // history A-Z — register banana bhi ek badlav hai
+    pushHistory({
+      eventId: ev.id,
+      refId: 'event',
+      name: ev.name,
+      action: 'addEvent',
+      changes: [],
+    });
     return ev.id;
   },
 

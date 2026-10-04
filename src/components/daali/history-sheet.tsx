@@ -68,6 +68,7 @@ const ACTION_STYLE: Record<HistoryItem['action'], { cls: string; icon: React.Rea
   add: { cls: 'text-emerald-700 dark:text-emerald-400', icon: <Plus className="h-3.5 w-3.5" /> },
   edit: { cls: 'text-amber-700 dark:text-amber-400', icon: <PenLine className="h-3.5 w-3.5" /> },
   delete: { cls: 'text-red-700 dark:text-red-400', icon: <Trash2 className="h-3.5 w-3.5" /> },
+  addEvent: { cls: 'text-emerald-700 dark:text-emerald-400', icon: <BookOpen className="h-3.5 w-3.5" /> },
   renameEvent: { cls: 'text-ink-soft', icon: <BookOpen className="h-3.5 w-3.5" /> },
   editEvent: { cls: 'text-ink-soft', icon: <PenLine className="h-3.5 w-3.5" /> },
   deleteEvent: { cls: 'text-red-700 dark:text-red-400', icon: <Trash2 className="h-3.5 w-3.5" /> },
@@ -152,9 +153,13 @@ export function HistorySheet({
                                   ? 'actEdit'
                                   : h.action === 'delete'
                                     ? 'actDelete'
-                                    : h.action === 'editEvent'
-                                      ? 'actEditEvent'
-                                      : 'actRenameEvent'
+                                    : h.action === 'addEvent'
+                                      ? 'actAddEvent'
+                                      : h.action === 'editEvent'
+                                        ? 'actEditEvent'
+                                        : h.action === 'deleteEvent'
+                                          ? 'eventDeleted'
+                                          : 'actRenameEvent'
                             )}
                           </span>
                           <span className="min-w-0 flex-1 truncate text-sm font-bold text-ink" title={h.name}>

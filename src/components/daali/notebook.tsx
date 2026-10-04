@@ -59,6 +59,9 @@ function useRowsPerPage(): number {
   return rows;
 }
 
+// register grid — 5 columns (तारीख़ column hati: date sirf history mein)
+const GRID = 'grid grid-cols-[2rem_1fr_5.2rem] sm:grid-cols-[2.4rem_minmax(0,2fr)_minmax(0,1.35fr)_minmax(0,0.9fr)_6.5rem]';
+
 interface NotebookProps {
   onRenameEvent: () => void;
   onDeleteEvent: () => void;
@@ -161,6 +164,8 @@ export function Notebook({ onRenameEvent, onDeleteEvent, onPrint, onPdf, onHisto
   const touch = useRef<{ x: number; y: number } | null>(null);
   const [editing, setEditing] = useState<{ id: string; cell: EditCell } | null>(null);
   const [writeSignal, setWriteSignal] = useState(0);
+  // khali filler line par click → likhai ki line WAHIN chali jati hai (line 5, 6… kahin bhi)
+  const [writeAtFiller, setWriteAtFiller] = useState<number | null>(null);
   // pehli baar ek chhota hint — "kahin bhi tap karke likh/sudhar sakte ho"
   const [showHint, setShowHint] = useState(() => {
     if (typeof window === 'undefined') return false;
@@ -249,6 +254,7 @@ export function Notebook({ onRenameEvent, onDeleteEvent, onPrint, onPdf, onHisto
   // kahin bhi khali line par click → wahin pen rakh do (writing line par le jao)
   const focusWriting = useCallback(() => {
     setEditing(null);
+    setWriteAtFiller(null);
     if (writingPage !== page) {
       setPage(writingPage);
       setTimeout(() => setWriteSignal((v) => v + 1), settings.pageAnimation ? 360 : 40);
@@ -267,6 +273,7 @@ export function Notebook({ onRenameEvent, onDeleteEvent, onPrint, onPdf, onHisto
 
   // after a line is written: if the page became full, palat to the next page automatically
   const onCommitted = useCallback(() => {
+    setWriteAtFiller(null); // likh gayi → pen wapas pehli khali line par
     if (pageEntries.length + 1 >= rowsPerPage) {
       setPage(page + 1);
       setTimeout(() => setWriteSignal((v) => v + 1), settings.pageAnimation ? 360 : 40);
@@ -468,13 +475,12 @@ export function Notebook({ onRenameEvent, onDeleteEvent, onPrint, onPdf, onHisto
           {/* register rows — likha hua + agli khali line, sab seedha line par */}
           <div className="register-rows mt-3 flex-1">
             {/* column header */}
-            <div className="grid grid-cols-[2rem_1fr_5.2rem] border-b-2 border-ink/50 pb-1 text-[13px] font-bold text-ink sm:grid-cols-[2.4rem_minmax(0,2fr)_minmax(0,1.35fr)_minmax(0,0.9fr)_6rem_6.2rem]">
+            <div className={`${GRID} border-b-2 border-ink/50 pb-1 text-[13px] font-bold text-ink`}>
               <div className="text-center">{t('colCr')}</div>
               <div>{t('colName')}</div>
               <div className="hidden sm:block">{t('colVillage')}</div>
               <div className="hidden sm:block">{t('colRelation')}</div>
               <div className="text-end">{t('colAmount')}</div>
-              <div className="hidden text-end sm:block">{t('colDate')}</div>
             </div>
 
             {total === 0 && page === 1 && (
@@ -491,7 +497,7 @@ export function Notebook({ onRenameEvent, onDeleteEvent, onPrint, onPdf, onHisto
                   serial={startIdx + i + 1}
                   script={settings.inputScript}
                   focusCell={editing.cell}
-                  onDone={() => setEditing(null)}
+                  onDone={() => setEditing((cur) => (cur && cur.id === entry.id ? null : cur))}
                 />
               ) : (
                 <RegisterRow
@@ -505,35 +511,34 @@ export function Notebook({ onRenameEvent, onDeleteEvent, onPrint, onPdf, onHisto
               )
             )}
 
-            {/* the next empty line — yahin likha jata hai */}
-            {writingHere && (
-              <WritingRow
-                key={`write-${page}`}
-                serial={total + 1}
-                script={settings.inputScript}
-                focusSignal={writeSignal}
-                onCommitted={onCommitted}
-              />
-            )}
-
-            {/* blank ruled lines — jaise register ki khali line; kahin bhi click karke likho */}
-            {Array.from({ length: Math.max(0, fillerCount) }).map((_, i) => (
-              <div
-                key={`filler-${i}`}
-                role="button"
-                tabIndex={-1}
-                aria-label={t('writeHere')}
-                className="ruled-row grid cursor-text grid-cols-[2rem_1fr_5.2rem] items-center hover:bg-ink/[0.035] sm:grid-cols-[2.4rem_minmax(0,2fr)_minmax(0,1.35fr)_minmax(0,0.9fr)_6rem_6.2rem]"
-                onClick={focusWriting}
-              >
-                <div />
-                <div />
-                <div className="hidden sm:block" />
-                <div className="hidden sm:block" />
-                <div />
-                <div className="hidden sm:block" />
-              </div>
-            ))}
+            {/* khali ruled lines — likhai ki line pehli khali line par hoti hai;
+                koi bhi khali line par click karo → pen WAHIN chala jata hai */}
+            {Array.from({ length: Math.max(0, fillerCount) }).map((_, i) => {
+              if (!writingHere) {
+                return <FillerRow key={`filler-${page}-${i}`} onClick={focusWriting} label={t('writeHere')} />;
+              }
+              const slotK = writeAtFiller ?? 0;
+              if (i === slotK) {
+                return (
+                  <WritingRow
+                    key={`write-${page}-${slotK}`}
+                    serial={total + 1 + slotK}
+                    script={settings.inputScript}
+                    focusSignal={writeSignal}
+                    onCommitted={onCommitted}
+                    onCancel={() => setWriteAtFiller(null)}
+                    autoStart={slotK > 0}
+                  />
+                );
+              }
+              return (
+                <FillerRow
+                  key={`filler-${page}-${i}`}
+                  onClick={() => setWriteAtFiller(i)}
+                  label={t('writeHere')}
+                />
+              );
+            })}
           </div>
 
           {/* totals — printed inside the register */}
@@ -622,7 +627,7 @@ function RegisterRow({
   const amt = entryAmountText(entry);
   return (
     <div
-      className={`ruled-row grid cursor-text grid-cols-[2rem_1fr_5.2rem] items-center text-[15px] text-ink sm:grid-cols-[2.4rem_minmax(0,2fr)_minmax(0,1.35fr)_minmax(0,0.9fr)_6rem_6.2rem] ${
+      className={`ruled-row ${GRID} cursor-text items-center text-[15px] text-ink ${
         isNew ? 'animate-write-in' : ''
       } ${isHighlight ? 'highlight-flash' : ''} hover:bg-ink/[0.045] active:bg-ink/[0.08]`}
       onClick={() => onEditCell('name')}
@@ -718,17 +723,26 @@ function RegisterRow({
           </span>
         )}
       </div>
-      <div
-        className="hidden px-0.5 text-end text-xs text-ink-soft sm:block"
-        onClick={(e) => {
-          e.stopPropagation();
-          onEditCell('date');
-        }}
-      >
-        {entry.date ? isoToDisplayDate(entry.date) : ''}
-      </div>
-      {/* sr-only date for mobile screen readers */}
-      <span className="sr-only">{!entry.date ? '' : `${t('dateLabel')}: ${isoToDisplayDate(entry.date)}`}</span>
+      {/* तारीख़ column hati — date sirf history/backup mein rehti hai */}
+    </div>
+  );
+}
+
+// khali ruled line — click karne par pen isi line par aa jata hai
+function FillerRow({ onClick, label }: { onClick: () => void; label: string }) {
+  return (
+    <div
+      role="button"
+      tabIndex={-1}
+      aria-label={label}
+      className={`ruled-row ${GRID} cursor-text items-center hover:bg-ink/[0.035]`}
+      onClick={onClick}
+    >
+      <div />
+      <div />
+      <div className="hidden sm:block" />
+      <div className="hidden sm:block" />
+      <div />
     </div>
   );
 }

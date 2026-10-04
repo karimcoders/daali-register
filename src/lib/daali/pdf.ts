@@ -207,9 +207,9 @@ function buildSheet(opts: {
     inner.appendChild(meta);
   }
 
-  // column header
-  const widths = ['7%', '26%', '18%', '14%', '17%', '18%'];
-  const cols = [t('colCr'), t('colName'), t('colVillage'), t('colRelation'), t('colAmount'), t('colDate')];
+  // column header — 5 columns (तारीख़ column hati: zyada jagah naam/village ko)
+  const widths = ['8%', '34%', '22%', '16%', '20%'];
+  const cols = [t('colCr'), t('colName'), t('colVillage'), t('colRelation'), t('colAmount')];
   const headerRow = el('div', {
     display: 'flex',
     borderBottom: `2px solid ${C.lineBold}`,
@@ -220,7 +220,7 @@ function buildSheet(opts: {
   cols.forEach((c, i) => {
     const d = el('div', { width: widths[i], boxSizing: 'border-box' }, c);
     if (i === 0) d.style.textAlign = 'center';
-    else if (i >= 4) d.style.textAlign = rtl ? 'left' : 'right';
+    else if (i === 4) d.style.textAlign = rtl ? 'left' : 'right';
     headerRow.appendChild(d);
   });
   inner.appendChild(headerRow);
@@ -236,10 +236,10 @@ function buildSheet(opts: {
   };
   const makeRow = (content: ((d: HTMLElement, i: number) => void) | null) => {
     const row = el('div', rowStyle);
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 5; i++) {
       const d = el('div', { width: widths[i], boxSizing: 'border-box', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' });
       if (i === 0) d.style.textAlign = 'center';
-      else if (i >= 4) d.style.textAlign = rtl ? 'left' : 'right';
+      else if (i === 4) d.style.textAlign = rtl ? 'left' : 'right';
       cellPad(d, rtl ? 'right' : 'left');
       if (content) content(d, i);
       row.appendChild(d);
@@ -249,7 +249,6 @@ function buildSheet(opts: {
 
   sheet.forEach((entry, i) => {
     const amt = entryAmountText(entry);
-    const dateTxt = entry.date ? isoToDisplayDate(entry.date) : '';
     inner.appendChild(
       makeRow((d, col) => {
         if (col === 0) d.textContent = String(serialStart + i);
@@ -258,14 +257,14 @@ function buildSheet(opts: {
           d.style.fontWeight = '600';
         } else if (col === 2) d.textContent = entry.village || '—';
         else if (col === 3) d.textContent = entry.relationship || '—';
-        else if (col === 4) {
+        else {
           d.textContent = amt.text;
           d.style.fontWeight = '700';
           if (!amt.cash) {
             d.style.fontFamily = handFont(rtl);
             d.style.color = C.soft;
           }
-        } else d.textContent = dateTxt;
+        }
       })
     );
   });
@@ -378,7 +377,19 @@ export async function downloadRegisterPdf(
 ): Promise<PdfSaveResult> {
   const [{ jsPDF }, html2canvasMod] = await Promise.all([import('jspdf'), import('html2canvas')]);
   const html2canvas = html2canvasMod.default;
-  const t = makeT(lang);
+
+  // fonts pehle poori tarah load hon — warna capture mein text toota-hua aata hai
+  // (mobile pe font async load hota hai, ye race real phones par hoti hai)
+  try {
+    await Promise.all([
+      document.fonts.load("700 30px 'Kalam'"),
+      document.fonts.load("400 15px 'Noto Sans Devanagari'"),
+      document.fonts.load("400 15px 'Noto Nastaliq Urdu'"),
+    ]);
+    await document.fonts.ready;
+  } catch {
+    /* fonts API unavailable — browser fallback chal jayega */
+  }
 
   const grandCount = entries.length;
   const grandSum = entries.reduce((a, e) => a + (e.amount || 0), 0);
@@ -424,14 +435,26 @@ export async function downloadRegisterPdf(
     for (let i = 0; i < sheets.length; i++) {
       onProgress?.(i, sheets.length);
       const source = container.children[i] as HTMLElement;
-      const canvas = await html2canvas(source, {
-        scale: 2,
-        backgroundColor: C.paper,
-        useCORS: true,
-        logging: false,
-        windowWidth: PAGE_W,
-      });
-      const img = canvas.toDataURL('image/jpeg', 0.93);
+      let canvas: HTMLCanvasElement;
+      try {
+        canvas = await html2canvas(source, {
+          scale: 2,
+          backgroundColor: C.paper,
+          useCORS: true,
+          logging: false,
+          windowWidth: PAGE_W,
+        });
+      } catch {
+        // phone par bade sheet mein ek baar fail ho sakta hai — kam quality se dobara
+        canvas = await html2canvas(source, {
+          scale: 1,
+          backgroundColor: C.paper,
+          useCORS: true,
+          logging: false,
+          windowWidth: PAGE_W,
+        });
+      }
+      const img = canvas.toDataURL('image/jpeg', 0.9);
       if (i > 0) pdf.addPage();
       pdf.addImage(img, 'JPEG', 0, 0, W, H);
     }
@@ -445,5 +468,4 @@ export async function downloadRegisterPdf(
     container.remove();
     restoreComputedStyle();
   }
-  void t;
 }

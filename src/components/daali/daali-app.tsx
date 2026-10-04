@@ -60,15 +60,6 @@ export function DaaliApp() {
     init();
   }, [init]);
 
-  const handlePrint = useCallback(() => {
-    if (view !== 'notebook' || printing) return;
-    setPrinting(true);
-    // let the print view render, then open the print dialog
-    printTimer.current = setTimeout(() => {
-      window.print();
-    }, 250);
-  }, [view, printing]);
-
   // real .pdf file download — mobile-safe: share sheet → download → नई विंडो
   const handlePdf = useCallback(async () => {
     if (view !== 'notebook' || pdfBusy || !currentEventId) return;
@@ -88,7 +79,7 @@ export function DaaliApp() {
       } else if (res.how === 'saved') {
         // link 2 minute tak zinda hai — agar download na dikhe to tap karke PDF khul jayegi
         toast.success(t('pdfDone'), {
-          duration: 12000,
+          duration: 20000,
           description: t('pdfTapOpen'),
           action: {
             label: t('pdfOpen'),
@@ -109,6 +100,22 @@ export function DaaliApp() {
       setPdfBusy(false);
     }
   }, [view, pdfBusy, currentEventId, events, allEntries, settings, t]);
+
+  const handlePrint = useCallback(() => {
+    if (view !== 'notebook' || printing) return;
+    // phone/tablet par window.print() kharab nikalta hai (layout toot jaata hai,
+    // kai browsers Save-as-PDF bhi theek se nahi karte) — wahan pakka PDF file
+    // ban kar download/share hoti hai jo print karne mein bilkul sahi aati hai
+    if (typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches) {
+      void handlePdf();
+      return;
+    }
+    setPrinting(true);
+    // let the print view render, then open the print dialog
+    printTimer.current = setTimeout(() => {
+      window.print();
+    }, 250);
+  }, [view, printing, handlePdf]);
 
   useEffect(() => {
     const after = () => {

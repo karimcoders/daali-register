@@ -87,13 +87,12 @@ export function PrintRegister() {
             <thead>
               <tr>
                 <th style={{ width: '8%' }}>{t('colCr')}</th>
-                <th style={{ width: '26%' }}>{t('colName')}</th>
-                <th style={{ width: '20%' }}>{t('colVillage')}</th>
+                <th style={{ width: '34%' }}>{t('colName')}</th>
+                <th style={{ width: '24%' }}>{t('colVillage')}</th>
                 <th style={{ width: '16%' }}>{t('colRelation')}</th>
-                <th className="amt" style={{ width: '15%' }}>
+                <th className="amt" style={{ width: '18%' }}>
                   {t('colAmount')}
                 </th>
-                <th style={{ width: '15%' }}>{t('colDate')}</th>
               </tr>
             </thead>
             <tbody>
@@ -111,7 +110,6 @@ export function PrintRegister() {
                     <td className="amt" style={amt.cash ? undefined : { fontFamily: rtl ? "'Noto Nastaliq Urdu', serif" : "'Kalam', cursive", color: '#6b5d49' }}>
                       {amt.cash ? `₹${formatNumber(entry.amount)}` : `🎁 ${amt.text}`}
                     </td>
-                    <td>{entry.date ? isoToDisplayDate(entry.date) : ''}</td>
                   </tr>
                 );
               })}
@@ -119,7 +117,6 @@ export function PrintRegister() {
               {Array.from({ length: Math.max(0, ROWS_PER_SHEET - sheet.length) }).map((_, i) => (
                 <tr key={`e-${i}`}>
                   <td>&nbsp;</td>
-                  <td />
                   <td />
                   <td />
                   <td />

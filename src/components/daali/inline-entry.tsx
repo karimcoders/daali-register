@@ -14,14 +14,24 @@ import { useT } from './use-t';
 import { TranslitInput, isIMEComposing, type PickPayload } from './translit-input';
 import { ConfirmDialog } from './ui-bits';
 import { toast } from 'sonner';
-import { Trash2 } from 'lucide-react';
+import { Trash2, X } from 'lucide-react';
 
-const GRID = 'grid grid-cols-[2rem_1fr_5.2rem] sm:grid-cols-[2.4rem_minmax(0,2fr)_minmax(0,1.35fr)_minmax(0,0.9fr)_6rem_6.2rem]';
+const GRID = 'grid grid-cols-[2rem_1fr_5.2rem] sm:grid-cols-[2.4rem_minmax(0,2fr)_minmax(0,1.35fr)_minmax(0,0.9fr)_6.5rem]';
 
 export const QUICK_AMOUNTS = [101, 251, 501, 1001, 2001, 5001];
 
 /** which cell of a written line was tapped — pen-style direct editing */
-export type EditCell = 'name' | 'village' | 'relation' | 'amount' | 'date';
+export type EditCell = 'name' | 'village' | 'relation' | 'amount';
+
+/**
+ * Focus left this row? (jaise pen utha li) — setTimeout se check karte hain
+ * kyunki blur ke waqt agla focus abhi set nahi hua hota.
+ */
+function focusLeftRow(row: HTMLElement | null): boolean {
+  const ae = document.activeElement;
+  if (!ae || ae === document.body) return true;
+  return !(row && ae instanceof Node && row.contains(ae));
+}
 
 type SugField = 'name' | 'village' | 'relation' | 'item';
 
@@ -80,12 +90,14 @@ function QuickAmounts({
   itemMode,
   onMode,
   onPick,
+  onCancel,
 }: {
   amountRaw: string;
   itemText: string;
   itemMode: boolean;
   onMode: (v: boolean) => void;
   onPick: (n: number) => void;
+  onCancel?: () => void;
 }) {
   const t = useT();
   const amountNum = parseInt(amountRaw || '0', 10) || 0;
@@ -117,6 +129,18 @@ function QuickAmounts({
           <span className="ml-auto font-hand text-lg font-bold text-ink">{formatRupees(amountNum)}</span>
         )
       )}
+      {onCancel && (
+        <button
+          type="button"
+          className="ghost-ink-btn ml-auto flex h-8 w-8 shrink-0 items-center justify-center !border-ink/25"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={onCancel}
+          aria-label={t('cancel')}
+          title={t('cancel')}
+        >
+          <X className="h-4 w-4" />
+        </button>
+      )}
     </div>
   );
 }
@@ -137,6 +161,8 @@ function ModeChips({
       <button
         type="button"
         className={`chip h-8 px-2.5 text-[13px] ${!itemMode ? '!border-margin-red !bg-margin-red/10 font-bold' : ''}`}
+        onMouseDown={(e) => e.preventDefault()}
+        onTouchStart={(e) => e.preventDefault()}
         onClick={() => onMode(false)}
         aria-pressed={!itemMode}
       >
@@ -145,6 +171,8 @@ function ModeChips({
       <button
         type="button"
         className={`chip h-8 px-2.5 text-[13px] ${itemMode ? '!border-margin-red !bg-margin-red/10 font-bold' : ''}`}
+        onMouseDown={(e) => e.preventDefault()}
+        onTouchStart={(e) => e.preventDefault()}
         onClick={() => onMode(true)}
         aria-pressed={itemMode}
       >
@@ -165,11 +193,17 @@ export function WritingRow({
   script,
   focusSignal,
   onCommitted,
+  onCancel,
+  autoStart,
 }: {
   serial: number;
   script: InputScriptSetting;
   focusSignal: number;
   onCommitted: () => void;
+  /** ✕/Escape — line chhod do, kuch bhi likha nahi jayega */
+  onCancel?: () => void;
+  /** khali line par click → pen WAHIN rakha — row turant khuli, likhna shuru */
+  autoStart?: boolean;
 }) {
   const t = useT();
   const allEntries = useDaali((s) => s.allEntries);
@@ -177,7 +211,7 @@ export function WritingRow({
   const addEntry = useDaali((s) => s.addEntry);
   const { sug, wire, choose, clear } = useSuggest();
 
-  const [active, setActive] = useState(false);
+  const [active, setActive] = useState(autoStart ?? false);
   const [name, setName] = useState('');
   const [nameRaw, setNameRaw] = useState('');
   const [village, setVillage] = useState('');
@@ -187,11 +221,15 @@ export function WritingRow({
   // नेवता/सामान mode — non-cash gift written in place of the amount
   const [itemMode, setItemMode] = useState(false);
   const [itemText, setItemText] = useState('');
-  const [date, setDate] = useState(todayISO());
+  const [date] = useState(todayISO()); // aaj ki tarikh — sirf history/record ke liye
   const [nameErr, setNameErr] = useState('');
   const [amountErr, setAmountErr] = useState('');
   const [dup, setDup] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const rowRef = useRef<HTMLDivElement>(null);
+  const committing = useRef(false); // blur + Enter ek saath — double commit kabhi nahi
+  const autoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const nameRef = useRef<HTMLInputElement>(null);
   const villageMobileRef = useRef<HTMLInputElement>(null);
@@ -208,6 +246,13 @@ export function WritingRow({
   };
   const focusVillage = () => focusFirstVisible(villageMobileRef.current, villageDesktopRef.current);
   const focusRelation = () => focusFirstVisible(relationMobileRef.current, relationDesktopRef.current);
+
+  // autoStart: khali line par click hua — naam wale khaane mein seedha pen rakho
+  useEffect(() => {
+    if (!autoStart) return;
+    const tm = setTimeout(() => nameRef.current?.focus(), 60);
+    return () => clearTimeout(tm);
+  }, []);
 
   // ＋ button / page-advance asks this line to start writing.
   // Only reacts to signal CHANGES (not the value at mount) so that flipping
@@ -241,34 +286,40 @@ export function WritingRow({
     setAmountRaw('');
     setItemMode(false);
     setItemText('');
-    setDate(todayISO());
     setNameErr('');
     setAmountErr('');
     setDup(null);
     clear();
   };
 
-  const doCommit = async (force = false) => {
-    if (busy) return;
+  const doCommit = async (force = false, fromBlur = false, amountOverride?: number) => {
+    if (busy || committing.current) return;
     const nm = name.trim();
     const it = itemMode ? itemText.trim() : '';
+    const amt = amountOverride ?? amountNum; // chip-click ke saath state abhi update nahi hui hoti
     let ok = true;
     if (!nm) {
       setNameErr(t('nameRequired'));
       ok = false;
     } else setNameErr('');
-    if (amountNum <= 0 && !it) {
+    if (amt <= 0 && !it) {
       setAmountErr(t('amountRequired'));
       ok = false;
     } else setAmountErr('');
     if (!ok) {
-      (nm ? (itemMode ? itemRef : amountRef) : nameRef).current?.focus();
+      // pen utha li (blur) → focus wapas nahi kheenchte, bas galti dikhti hai
+      if (!fromBlur) (nm ? (itemMode ? itemRef : amountRef) : nameRef).current?.focus();
       return;
     }
     // duplicate — never blocks, just asks once (paper-note style)
     if (!force && findDuplicate()) {
       setDup(nm);
       return;
+    }
+    committing.current = true;
+    if (autoTimer.current) {
+      clearTimeout(autoTimer.current);
+      autoTimer.current = null;
     }
     setDup(null);
     setBusy(true);
@@ -277,7 +328,7 @@ export function WritingRow({
         name: nm,
         village,
         relationship,
-        amount: it ? 0 : amountNum,
+        amount: it ? 0 : amt,
         item: it,
         date,
         note: '',
@@ -287,17 +338,62 @@ export function WritingRow({
       // फटाफट — the next line is ready immediately
       reset();
       onCommitted();
-      setTimeout(() => nameRef.current?.focus(), 60);
+      // Enter se likha → agla naam turant (keyboard khula rahta hai);
+      // blur se likha → pen utha li thi, keyboard wapas nahi kheenchte
+      if (!fromBlur) setTimeout(() => nameRef.current?.focus(), 60);
     } catch {
       toast.error(t('saveError'));
     } finally {
+      committing.current = false;
       setBusy(false);
     }
   };
 
   const cancelLine = () => {
+    if (autoTimer.current) clearTimeout(autoTimer.current);
     reset();
     setActive(false);
+    onCancel?.();
+  };
+
+  /** koi bhi field mein typing shuru → chip auto-commit ruk jao */
+  const armCancel = () => {
+    if (autoTimer.current) {
+      clearTimeout(autoTimer.current);
+      autoTimer.current = null;
+    }
+  };
+
+  /**
+   * Pen utha li (focus line se bahar) → line apne aap likh jaye.
+   * - sab khali → line chup chaap band
+   * - naam + रकम/सामान → seedha commit (जैसे Enter dabaya ho)
+   * - aadha-adhura → line khuli rahegi, galti dikh jayegi
+   */
+  const blurCommitCheck = () => {
+    if (committing.current) return;
+    const nm = name.trim();
+    const it = itemMode ? itemText.trim() : '';
+    const anyText = nm || village.trim() || relationship.trim() || amountRaw.trim() || it;
+    if (!anyText) {
+      setActive(false);
+      reset();
+      onCancel?.();
+      return;
+    }
+    if (nm && (amountNum > 0 || it)) {
+      void doCommit(false, true); // fromBlur — focus wapas nahi kheenchenge
+    } else {
+      // adhura — galti dikhao par keyboard wapas mat kheencho
+      if (!nm) setNameErr(t('nameRequired'));
+      if (amountNum <= 0 && !it) setAmountErr(t('amountRequired'));
+    }
+  };
+
+  const scheduleBlurCommit = () => {
+    setTimeout(() => {
+      if (focusLeftRow(rowRef.current)) blurCommitCheck();
+    }, 90);
   };
 
   // ── inactive: a quiet empty ruled line with a faint ✎ ──
@@ -332,7 +428,7 @@ export function WritingRow({
 
   // ── active: write ON the line ──
   return (
-    <div className={`ruled-row ${GRID} items-center bg-ink/[0.03]`}>
+    <div ref={rowRef} className={`ruled-row ${GRID} items-center bg-ink/[0.03]`}>
       <div className="text-center text-[13px] text-ink-soft">{String(serial).padStart(2, '0')}</div>
 
       {/* नाम (+ mobile mini-line for गाँव / रिश्ता) */}
@@ -355,6 +451,7 @@ export function WritingRow({
             }}
             onRawChange={setNameRaw}
             onKeyDown={(e, fv) => {
+              armCancel();
               if (e.key === 'Enter') {
                 e.preventDefault();
                 if (fv !== undefined) setName(fv);
@@ -365,6 +462,7 @@ export function WritingRow({
                 cancelLine();
               }
             }}
+            onBlur={scheduleBlurCommit}
           />
           <FieldError msg={nameErr} />
         </div>
@@ -385,12 +483,14 @@ export function WritingRow({
               setVillageRaw(v);
             }}
             onKeyDown={(e) => {
+              armCancel();
               if (e.key === 'Enter') {
                 e.preventDefault();
                 focusRelation();
               }
               if (e.key === 'Escape') cancelLine();
             }}
+            onBlur={scheduleBlurCommit}
           />
           <TranslitInput
             ref={relationMobileRef}
@@ -404,12 +504,14 @@ export function WritingRow({
             script={script}
             onValueChange={setRelationship}
             onKeyDown={(e) => {
+              armCancel();
               if (e.key === 'Enter') {
                 e.preventDefault();
                 amountRef.current?.focus();
               }
               if (e.key === 'Escape') cancelLine();
             }}
+            onBlur={scheduleBlurCommit}
           />
         </div>
       </div>
@@ -431,12 +533,14 @@ export function WritingRow({
             setVillageRaw(v);
           }}
           onKeyDown={(e) => {
+            armCancel();
             if (e.key === 'Enter') {
               e.preventDefault();
               focusRelation();
             }
             if (e.key === 'Escape') cancelLine();
           }}
+          onBlur={scheduleBlurCommit}
         />
       </div>
 
@@ -454,12 +558,14 @@ export function WritingRow({
           script={script}
           onValueChange={setRelationship}
           onKeyDown={(e) => {
+            armCancel();
             if (e.key === 'Enter') {
               e.preventDefault();
               amountRef.current?.focus();
             }
             if (e.key === 'Escape') cancelLine();
           }}
+          onBlur={scheduleBlurCommit}
         />
       </div>
 
@@ -488,6 +594,7 @@ export function WritingRow({
                 setAmountErr('');
               }}
               onKeyDown={(e, fv) => {
+                armCancel();
                 if (e.key === 'Enter') {
                   e.preventDefault();
                   if (fv !== undefined) setItemText(fv);
@@ -498,6 +605,7 @@ export function WritingRow({
                   cancelLine();
                 }
               }}
+              onBlur={scheduleBlurCommit}
             />
           ) : (
             <input
@@ -517,6 +625,7 @@ export function WritingRow({
               }}
               onKeyDown={(e) => {
                 if (isIMEComposing(e)) return;
+                armCancel();
                 if (e.key === 'Enter') {
                   e.preventDefault();
                   doCommit();
@@ -526,29 +635,11 @@ export function WritingRow({
                   cancelLine();
                 }
               }}
+              onBlur={scheduleBlurCommit}
             />
           )}
           <FieldError msg={amountErr} />
         </div>
-      </div>
-
-      {/* desktop: तारीख */}
-      <div className="hidden px-0.5 sm:block">
-        <input
-          type="date"
-          className="cell-input text-right text-xs text-ink-soft"
-          value={date}
-          aria-label={t('date')}
-          onChange={(e) => setDate(e.target.value)}
-          onKeyDown={(e) => {
-            if (isIMEComposing(e)) return;
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              doCommit();
-            }
-            if (e.key === 'Escape') cancelLine();
-          }}
-        />
       </div>
 
       {/* quick ₹ chips + नेवता toggle + duplicate note — only while writing */}
@@ -560,6 +651,7 @@ export function WritingRow({
           <div className="mt-1.5 flex gap-2">
             <button
               className="ghost-ink-btn h-9 flex-1 text-base"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => {
                 setDup(null);
                 nameRef.current?.focus();
@@ -567,7 +659,11 @@ export function WritingRow({
             >
               {t('no')}
             </button>
-            <button className="ink-btn h-9 flex-1 text-base" onClick={() => doCommit(true)}>
+            <button
+              className="ink-btn h-9 flex-1 text-base"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => doCommit(true)}
+            >
               {t('writeAnyway')}
             </button>
           </div>
@@ -585,10 +681,17 @@ export function WritingRow({
             setTimeout(() => (v ? itemRef : amountRef).current?.focus(), 30);
           }}
           onPick={(q) => {
+            armCancel();
             setAmountRaw(String(q));
             setAmountErr('');
-            nameRef.current?.focus();
+            if (name.trim()) {
+              // नाम + रकम पूरे — लाइन अपने आप लिख जाएगी (Enter की ज़रूरत नहीं)
+              autoTimer.current = setTimeout(() => void doCommit(false, false, q), 280);
+            } else {
+              nameRef.current?.focus();
+            }
           }}
+          onCancel={cancelLine}
         />
       )}
     </div>
@@ -624,13 +727,16 @@ export function EntryEditRow({
   const [amountRaw, setAmountRaw] = useState(entry.amount ? String(entry.amount) : '');
   const [itemMode, setItemMode] = useState(!(entry.amount > 0));
   const [itemText, setItemText] = useState(entry.item || '');
-  const [date, setDate] = useState(entry.date || todayISO());
+  const [date] = useState(entry.date || todayISO()); // tarikh column hati — value andar se banee rahti hai
   const [note, setNote] = useState(entry.note);
   const [nameErr, setNameErr] = useState('');
   const [amountErr, setAmountErr] = useState('');
   const [dup, setDup] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  const rowRef = useRef<HTMLDivElement>(null);
+  const saving = useRef(false); // blur + Save click ek saath — double save kabhi nahi
 
   const nameRef = useRef<HTMLInputElement>(null);
   const villageMobileRef = useRef<HTMLInputElement>(null);
@@ -639,7 +745,6 @@ export function EntryEditRow({
   const relationDesktopRef = useRef<HTMLInputElement>(null);
   const amountRef = useRef<HTMLInputElement>(null);
   const itemRef = useRef<HTMLInputElement>(null);
-  const dateRef = useRef<HTMLInputElement>(null);
 
   const focusFirstVisible = (...els: Array<HTMLInputElement | null>) => {
     const el = els.find((x) => x && x.offsetParent !== null);
@@ -657,9 +762,6 @@ export function EntryEditRow({
       switch (focusCell) {
         case 'amount':
           target = pickVisible(amountRef.current);
-          break;
-        case 'date':
-          target = pickVisible(dateRef.current);
           break;
         case 'village':
           target = pickVisible(villageMobileRef.current, villageDesktopRef.current);
@@ -689,8 +791,8 @@ export function EntryEditRow({
           (!!nameRaw && !!e.nameLatin && normalizeName(e.nameLatin) === normalizeName(nameRaw)))
     );
 
-  const doSave = async (force = false) => {
-    if (busy) return;
+  const doSave = async (force = false, fromBlur = false) => {
+    if (busy || saving.current) return;
     const nm = name.trim();
     const it = itemMode ? itemText.trim() : '';
     let ok = true;
@@ -703,13 +805,28 @@ export function EntryEditRow({
       ok = false;
     } else setAmountErr('');
     if (!ok) {
-      (nm ? (itemMode ? itemRef : amountRef) : nameRef).current?.focus();
+      // pen utha li (blur) → focus wapas nahi kheenchte; line khuli rahegi
+      if (!fromBlur) (nm ? (itemMode ? itemRef : amountRef) : nameRef).current?.focus();
       return;
     }
     if (!force && findDuplicate()) {
       setDup(nm);
       return;
     }
+    // kuch badla hi nahi → bas line band kar do, khaali save/history nahi
+    const dirty =
+      nm !== entry.name ||
+      village !== entry.village ||
+      relationship !== entry.relationship ||
+      (it ? 0 : amountNum) !== entry.amount ||
+      (it || undefined) !== entry.item ||
+      date !== (entry.date || '') ||
+      note !== entry.note;
+    if (!dirty) {
+      onDone();
+      return;
+    }
+    saving.current = true;
     setDup(null);
     setBusy(true);
     try {
@@ -729,12 +846,36 @@ export function EntryEditRow({
     } catch {
       toast.error(t('saveError'));
     } finally {
+      saving.current = false;
       setBusy(false);
     }
   };
 
+  /**
+   * Pen utha li (focus line se bahar) → badlav apne aap save.
+   * Bilkul waise jaise asli copy mein likh kar pen rakhte hain.
+   */
+  const blurSaveCheck = () => {
+    if (saving.current || busy) return;
+    const nm = name.trim();
+    const it = itemMode ? itemText.trim() : '';
+    if (nm && (amountNum > 0 || it)) {
+      void doSave(false, true);
+    } else {
+      // adhura — galti dikhao par keyboard wapas mat kheencho
+      if (!nm) setNameErr(t('nameRequired'));
+      if (amountNum <= 0 && !it) setAmountErr(t('amountRequired'));
+    }
+  };
+
+  const scheduleBlurSave = () => {
+    setTimeout(() => {
+      if (focusLeftRow(rowRef.current)) blurSaveCheck();
+    }, 90);
+  };
+
   return (
-    <div className={`ruled-row ${GRID} items-center bg-ink/[0.04]`}>
+    <div ref={rowRef} className={`ruled-row ${GRID} items-center bg-ink/[0.04]`}>
       <div className="text-center text-[13px] text-ink-soft">{String(serial).padStart(2, '0')}</div>
 
       <div className="min-w-0 px-0.5 py-1">
@@ -765,6 +906,7 @@ export function EntryEditRow({
                 onDone();
               }
             }}
+            onBlur={scheduleBlurSave}
           />
           <FieldError msg={nameErr} />
         </div>
@@ -790,6 +932,7 @@ export function EntryEditRow({
                 onDone();
               }
             }}
+            onBlur={scheduleBlurSave}
           />
           <TranslitInput
             ref={relationMobileRef}
@@ -807,6 +950,7 @@ export function EntryEditRow({
                 onDone();
               }
             }}
+            onBlur={scheduleBlurSave}
           />
         </div>
       </div>
@@ -831,6 +975,7 @@ export function EntryEditRow({
               onDone();
             }
           }}
+          onBlur={scheduleBlurSave}
         />
       </div>
 
@@ -851,6 +996,7 @@ export function EntryEditRow({
               onDone();
             }
           }}
+          onBlur={scheduleBlurSave}
         />
       </div>
 
@@ -888,6 +1034,7 @@ export function EntryEditRow({
                   onDone();
                 }
               }}
+              onBlur={scheduleBlurSave}
             />
           ) : (
             <input
@@ -916,29 +1063,11 @@ export function EntryEditRow({
                   onDone();
                 }
               }}
+              onBlur={scheduleBlurSave}
             />
           )}
           <FieldError msg={amountErr} />
         </div>
-      </div>
-
-      <div className="hidden px-0.5 sm:block">
-        <input
-          ref={dateRef}
-          type="date"
-          className="cell-input text-right text-xs text-ink-soft"
-          value={date}
-          aria-label={t('date')}
-          onChange={(e) => setDate(e.target.value)}
-          onKeyDown={(e) => {
-            if (isIMEComposing(e)) return;
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              doSave();
-            }
-            if (e.key === 'Escape') onDone();
-          }}
-        />
       </div>
 
       {/* dictionary suggestions while editing */}
@@ -970,18 +1099,28 @@ export function EntryEditRow({
             }
             if (e.key === 'Escape') onDone();
           }}
+          onBlur={scheduleBlurSave}
         />
         <button
           className="ghost-ink-btn flex h-9 w-9 shrink-0 items-center justify-center !border-margin-red/50 !text-margin-red"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => setConfirmDelete(true)}
           aria-label={t('delete')}
         >
           <Trash2 className="h-4 w-4" />
         </button>
-        <button className="ghost-ink-btn h-9 px-3 text-base" onClick={onDone}>
+        <button
+          className="ghost-ink-btn h-9 px-3 text-base"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={onDone}
+        >
           {t('cancel')}
         </button>
-        <button className="ink-btn h-9 px-4 text-base" onClick={() => doSave()}>
+        <button
+          className="ink-btn h-9 px-4 text-base"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => doSave()}
+        >
           {t('save')}
         </button>
       </div>
@@ -994,6 +1133,7 @@ export function EntryEditRow({
           <div className="mt-1.5 flex gap-2">
             <button
               className="ghost-ink-btn h-9 flex-1 text-base"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => {
                 setDup(null);
                 nameRef.current?.focus();
@@ -1001,7 +1141,11 @@ export function EntryEditRow({
             >
               {t('no')}
             </button>
-            <button className="ink-btn h-9 flex-1 text-base" onClick={() => doSave(true)}>
+            <button
+              className="ink-btn h-9 flex-1 text-base"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => doSave(true)}
+            >
               {t('writeAnyway')}
             </button>
           </div>
