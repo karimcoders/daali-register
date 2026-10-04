@@ -23,6 +23,8 @@ export interface DaaliEntry {
   /** original roman typing (when written via transliteration) — used for search */
   nameLatin?: string;
   villageLatin?: string;
+  /** मोबाइल नंबर (optional) — WhatsApp पर अपनी दाली की रसीद भेजने के लिए */
+  phone?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -93,6 +95,7 @@ export interface EntryInput {
   note: string;
   nameLatin?: string;
   villageLatin?: string;
+  phone?: string;
 }
 
 // Common relationships for suggestions (rural Bihar context)

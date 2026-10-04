@@ -16,7 +16,7 @@ import { ConfirmDialog } from './ui-bits';
 import { toast } from 'sonner';
 import { Trash2, X } from 'lucide-react';
 
-const GRID = 'grid grid-cols-[2rem_1fr_5.2rem] sm:grid-cols-[2.4rem_minmax(0,2fr)_minmax(0,1.35fr)_minmax(0,0.9fr)_6.5rem]';
+const GRID = 'grid grid-cols-[2rem_1fr_5.2rem_1.9rem] sm:grid-cols-[2.4rem_minmax(0,2fr)_minmax(0,1.35fr)_minmax(0,0.9fr)_6.5rem_2.1rem]';
 
 export const QUICK_AMOUNTS = [101, 251, 501, 1001, 2001, 5001];
 
@@ -729,6 +729,7 @@ export function EntryEditRow({
   const [itemText, setItemText] = useState(entry.item || '');
   const [date] = useState(entry.date || todayISO()); // tarikh column hati — value andar se banee rahti hai
   const [note, setNote] = useState(entry.note);
+  const [phone, setPhone] = useState(entry.phone || '');
   const [nameErr, setNameErr] = useState('');
   const [amountErr, setAmountErr] = useState('');
   const [dup, setDup] = useState<string | null>(null);
@@ -821,7 +822,8 @@ export function EntryEditRow({
       (it ? 0 : amountNum) !== entry.amount ||
       (it || undefined) !== entry.item ||
       date !== (entry.date || '') ||
-      note !== entry.note;
+      note !== entry.note ||
+      phone.trim() !== (entry.phone || '');
     if (!dirty) {
       onDone();
       return;
@@ -840,6 +842,7 @@ export function EntryEditRow({
         note,
         nameLatin: nameRaw !== nm ? nameRaw : '',
         villageLatin: villageRaw !== village ? villageRaw : '',
+        phone,
       });
       toast.success(t('updatedToast'), { duration: 1500 });
       onDone();
@@ -1091,6 +1094,24 @@ export function EntryEditRow({
           autoComplete="off"
           aria-label={t('note')}
           onChange={(e) => setNote(e.target.value)}
+          onKeyDown={(e) => {
+            if (isIMEComposing(e)) return;
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              doSave();
+            }
+            if (e.key === 'Escape') onDone();
+          }}
+          onBlur={scheduleBlurSave}
+        />
+        <input
+          className="cell-input w-[8.75rem] shrink-0 text-[13px] text-ink-soft"
+          placeholder={t('phonePh')}
+          value={phone}
+          inputMode="tel"
+          autoComplete="off"
+          aria-label={t('phoneLabel')}
+          onChange={(e) => setPhone(e.target.value)}
           onKeyDown={(e) => {
             if (isIMEComposing(e)) return;
             if (e.key === 'Enter') {

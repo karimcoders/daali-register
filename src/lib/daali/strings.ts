@@ -119,6 +119,7 @@ const hi = {
   pdfError: 'PDF नहीं बन पाई। फिर कोशिश करें।',
   pdfOpen: 'खोलें',
   pdfTapOpen: 'फ़ाइल नहीं मिली? यहाँ टैप करके PDF खोलें।',
+  pdfShare: 'शेयर करें',
   pdfOpenedTab: 'PDF नई विंडो में खुली — वहीं से सेव करें।',
   confirmRestore: 'बैकअप लाने से अभी का सारा डेटा बदल जाएगा। आगे बढ़ें?',
   restoreOk: 'डेटा वापस आ गया ✓',
@@ -176,6 +177,13 @@ const hi = {
   fDate: 'तारीख',
   fNote: 'नोट',
   fEventName: 'रजिस्टर का नाम',
+  fPhone: 'मोबाइल नंबर',
+  shareWhatsapp: 'WhatsApp पर भेजें',
+  sendWhatsapp: 'भेजें',
+  phoneLabel: 'मोबाइल नंबर (WhatsApp)',
+  phonePh: 'जैसे 9431012345',
+  whatsappOpening: 'WhatsApp खुल रहा है…',
+  numberSavedToast: 'नंबर सेव हो गया ✓',
 } as const;
 
 export type TString = keyof typeof hi;
@@ -293,6 +301,7 @@ const ur: Record<TString, string> = {
   pdfError: 'PDF نہیں بن سکی۔ دوبارہ کوشش کریں۔',
   pdfOpen: 'کھولیں',
   pdfTapOpen: 'فائل نہیں ملی؟ یہاں ٹیپ کر کے PDF کھولیں۔',
+  pdfShare: 'شیئر کریں',
   pdfOpenedTab: 'PDF نئی ونڈو میں کھلی — وہیں سے محفوظ کریں۔',
   confirmRestore: 'بیک اپ لانے سے ابھی کا سارا ڈیٹا بدل جائے گا۔ آگے بڑھیں؟',
   restoreOk: 'ڈیٹا واپس آ گیا ✓',
@@ -347,6 +356,13 @@ const ur: Record<TString, string> = {
   fDate: 'تاریخ',
   fNote: 'نوٹ',
   fEventName: 'رجسٹر کا نام',
+  fPhone: 'موبائل نمبر',
+  shareWhatsapp: 'واٹس ایپ پر بھیجیں',
+  sendWhatsapp: 'بھیجیں',
+  phoneLabel: 'موبائل نمبر (واٹس ایپ)',
+  phonePh: 'مثلاً 9431012345',
+  whatsappOpening: 'واٹس ایپ کھل رہا ہے…',
+  numberSavedToast: 'نمبر محفوظ ہو گیا ✓',
 };
 
 const en: Record<TString, string> = {
@@ -462,6 +478,7 @@ const en: Record<TString, string> = {
   pdfError: 'Could not make the PDF. Please try again.',
   pdfOpen: 'Open',
   pdfTapOpen: "Can't find the file? Tap here to open the PDF.",
+  pdfShare: 'Share',
   pdfOpenedTab: 'PDF opened in a new tab — save it from there.',
   confirmRestore: 'Restoring will replace all current data. Continue?',
   restoreOk: 'Data restored ✓',
@@ -516,6 +533,13 @@ const en: Record<TString, string> = {
   fDate: 'Date',
   fNote: 'Note',
   fEventName: 'Register name',
+  fPhone: 'Mobile number',
+  shareWhatsapp: 'Send on WhatsApp',
+  sendWhatsapp: 'Send',
+  phoneLabel: 'Mobile number (WhatsApp)',
+  phonePh: 'e.g. 9431012345',
+  whatsappOpening: 'Opening WhatsApp…',
+  numberSavedToast: 'Number saved ✓',
 };
 
 const dicts: Record<Language, Record<TString, string>> = { hi, ur, en };

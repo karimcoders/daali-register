@@ -321,7 +321,35 @@ function buildSheet(opts: {
 }
 
 /** how the PDF reached the user — 'saved' = anchor download, 'shared' = share sheet, 'opened' = new tab */
-export type PdfSaveResult = { how: 'shared' | 'saved' | 'opened'; url: string; filename: string };
+export type PdfSaveResult = { how: 'shared' | 'saved' | 'opened'; url: string; filename: string; file?: File };
+
+/**
+ * khali/blank capture detection — kabhi-kabhi phone par html2canvas fonts/
+ * paint settle hone se PEHLE snapshot le leta hai aur poori page safed aa jaati
+ * hai ("pdf sahi nahi"). Sampled pixel test: ~99.5% ek jaise pixel = blank.
+ */
+function canvasLooksBlank(canvas: HTMLCanvasElement): boolean {
+  try {
+    const ctx = canvas.getContext('2d');
+    if (!ctx || canvas.width === 0 || canvas.height === 0) return false;
+    const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const r0 = data[0];
+    const g0 = data[1];
+    const b0 = data[2];
+    let n = 0;
+    let same = 0;
+    for (let i = 0; i < data.length; i += 4 * 997) {
+      n++;
+      const dr = Math.abs(data[i] - r0);
+      const dg = Math.abs(data[i + 1] - g0);
+      const db = Math.abs(data[i + 2] - b0);
+      if (dr + dg + db < 14) same++;
+    }
+    return n > 0 && same / n > 0.995;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Mobile-safe PDF save — pdf.save() alone fails silently in many phone
@@ -335,13 +363,15 @@ async function savePdfFile(pdf: jsPDF, filename: string): Promise<PdfSaveResult>
   setTimeout(() => URL.revokeObjectURL(url), 120_000);
 
   // 1) share sheet (phones) — "फ़ाइलों में सेव करें", WhatsApp, Gmail, प्रिंट…
+  let sharedFile: File | undefined;
   try {
     const file = new File([blob], filename, { type: 'application/pdf' });
+    sharedFile = file;
     const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
     const coarsePointer = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
     if (coarsePointer && typeof nav.share === 'function' && nav.canShare?.({ files: [file] })) {
       await nav.share({ files: [file], title: filename });
-      return { how: 'shared', url, filename };
+      return { how: 'shared', url, filename, file };
     }
   } catch (err) {
     if ((err as DOMException | undefined)?.name === 'AbortError') {
@@ -361,11 +391,11 @@ async function savePdfFile(pdf: jsPDF, filename: string): Promise<PdfSaveResult>
     document.body.appendChild(a);
     a.click();
     a.remove();
-    return { how: 'saved', url, filename };
+    return { how: 'saved', url, filename, file: sharedFile };
   } catch {
     // 3) last resort — open the PDF; user saves it from the viewer
     window.open(url, '_blank');
-    return { how: 'opened', url, filename };
+    return { how: 'opened', url, filename, file: sharedFile };
   }
 }
 
@@ -453,6 +483,20 @@ export async function downloadRegisterPdf(
           logging: false,
           windowWidth: PAGE_W,
         });
+      }
+      // blank capture (phone paint race) — kam quality se dobara, phir bhi khali
+      // hai to error do: khali PDF dene se behtar hai ki user ko pata chale
+      if (canvasLooksBlank(canvas)) {
+        canvas = await html2canvas(source, {
+          scale: 1,
+          backgroundColor: C.paper,
+          useCORS: true,
+          logging: false,
+          windowWidth: PAGE_W,
+        });
+        if (canvasLooksBlank(canvas)) {
+          throw new Error('daali-pdf-blank-capture');
+        }
       }
       const img = canvas.toDataURL('image/jpeg', 0.9);
       if (i > 0) pdf.addPage();

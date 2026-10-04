@@ -77,11 +77,31 @@ export function DaaliApp() {
         // share sheet se user ne file save/share kar li
         toast.success(t('pdfDone'), { duration: 2500 });
       } else if (res.how === 'saved') {
-        // link 2 minute tak zinda hai — agar download na dikhe to tap karke PDF khul jayegi
+        // link 2 minute tak zinda hai — toast se PDF खोलें bhi, WhatsApp/शेयर bhi
+        const reshare = async () => {
+          try {
+            const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
+            if (
+              res.file &&
+              typeof nav.share === 'function' &&
+              nav.canShare?.({ files: [res.file] })
+            ) {
+              await nav.share({ files: [res.file], title: res.filename });
+            } else {
+              window.open(res.url, '_blank');
+            }
+          } catch {
+            /* user ne share sheet band kar di — koi dikkat nahi */
+          }
+        };
         toast.success(t('pdfDone'), {
-          duration: 20000,
+          duration: 25000,
           description: t('pdfTapOpen'),
           action: {
+            label: t('pdfShare'),
+            onClick: () => void reshare(),
+          },
+          cancel: {
             label: t('pdfOpen'),
             onClick: () => window.open(res.url, '_blank'),
           },

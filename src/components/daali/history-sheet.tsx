@@ -29,6 +29,8 @@ function fieldLabel(key: string, t: (k: never) => string): string {
       return tt('fDate');
     case 'note':
       return tt('fNote');
+    case 'phone':
+      return tt('fPhone');
     case 'eventName':
       return tt('fEventName');
     case 'location':

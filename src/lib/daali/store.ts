@@ -119,6 +119,8 @@ interface DaaliState {
 
   addEntry: (data: EntryInput) => Promise<void>;
   updateEntry: (id: string, data: EntryInput) => Promise<void>;
+  /** sirf mobile number badalna — WhatsApp share strip se */
+  setEntryPhone: (id: string, phone: string) => Promise<void>;
   removeEntry: (id: string) => Promise<void>;
   setHighlight: (id: string | null) => void;
 
@@ -155,6 +157,7 @@ export const useDaali = create<DaaliState>((set, get) => {
     cmp('item');
     cmp('date');
     cmp('note');
+    cmp('phone');
     return ch;
   };
 
@@ -395,6 +398,7 @@ export const useDaali = create<DaaliState>((set, get) => {
       note: (data.note || '').trim(),
       nameLatin: (data.nameLatin || '').trim() || undefined,
       villageLatin: (data.villageLatin || '').trim() || undefined,
+      phone: (data.phone || '').trim() || undefined,
       createdAt: now,
       updatedAt: now,
     };
@@ -439,6 +443,8 @@ export const useDaali = create<DaaliState>((set, get) => {
       note: (data.note || '').trim(),
       nameLatin: (data.nameLatin || '').trim() || undefined,
       villageLatin: (data.villageLatin || '').trim() || undefined,
+      phone:
+        typeof data.phone === 'string' ? (data.phone || '').trim() || undefined : old.phone,
       updatedAt: Date.now(),
     };
     set((st) => ({ allEntries: st.allEntries.map((e) => (e.id === id ? updated : e)) }));
@@ -457,6 +463,28 @@ export const useDaali = create<DaaliState>((set, get) => {
         changes,
       });
     }
+  },
+
+  setEntryPhone: async (id, phone) => {
+    const old = get().allEntries.find((e) => e.id === id);
+    if (!old) return;
+    // sirf digits/+ space dash rakho — galti se likha text bhi saaf ho jata hai
+    const p = (phone || '').replace(/[^\d+\s-]/g, '').trim();
+    if (p === (old.phone || '').trim()) return;
+    const updated: DaaliEntry = { ...old, phone: p || undefined, updatedAt: Date.now() };
+    set((st) => ({ allEntries: st.allEntries.map((e) => (e.id === id ? updated : e)) }));
+    try {
+      await idbPut(STORE_ENTRIES, updated);
+    } catch {
+      set({ idbOk: false });
+    }
+    pushHistory({
+      eventId: updated.eventId,
+      refId: updated.id,
+      name: updated.name,
+      action: 'edit',
+      changes: [{ field: 'phone', from: old.phone || '', to: p }],
+    });
   },
 
   removeEntry: async (id) => {

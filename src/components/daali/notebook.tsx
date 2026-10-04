@@ -17,7 +17,8 @@ import {
   isoToDisplayDate,
   isArabicText,
 } from '@/lib/daali/format';
-import type { DaaliEntry } from '@/lib/daali/types';
+import type { DaaliEntry, DaaliEvent, Language } from '@/lib/daali/types';
+import { buildDaaliReceipt, normalizeWaDigits, waLink } from '@/lib/daali/share';
 import { useT } from './use-t';
 import { WritingRow, EntryEditRow, type EditCell } from './inline-entry';
 import { toast } from 'sonner';
@@ -26,11 +27,13 @@ import {
   ChevronRight,
   FileDown,
   History,
+  MessageCircle,
   MoreVertical,
   Pencil,
   Printer,
   Trash2,
   Undo2,
+  X,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -40,13 +43,24 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
-// Dynamic rows-per-page: pages feel like a real register on every screen size
+// Dynamic rows-per-page: pages feel like a real register on every screen size.
+// ⚠️ keyboard-shrink guard: phone par keyboard khulte hi innerHeight girta hai
+// aur resize fire hota hai — pehle ye rows-per-page ko chhota kar deta tha,
+// jisse page ka hisaab bigad jata tha aur auto page-turn toot jata tha.
+// Isliye: sirf WIDTH change ya height BADHNE par recompute — shrink ignore.
 function useRowsPerPage(): number {
   const [rows, setRows] = useState(8);
   useEffect(() => {
+    let lastW = 0;
+    let lastH = 0;
     const compute = () => {
       const h = window.innerHeight;
       const w = window.innerWidth;
+      const widthChanged = lastW !== 0 && Math.abs(w - lastW) > 2;
+      const grew = h > lastH;
+      if (lastH !== 0 && !widthChanged && !grew) return; // keyboard shrink — ignore
+      lastW = w;
+      lastH = h;
       const rowH = w >= 640 ? 50 : 46;
       const overhead = w >= 640 ? 385 : 360;
       const n = Math.floor((h - overhead) / rowH);
@@ -54,13 +68,18 @@ function useRowsPerPage(): number {
     };
     compute();
     window.addEventListener('resize', compute);
-    return () => window.removeEventListener('resize', compute);
+    window.addEventListener('orientationchange', compute);
+    return () => {
+      window.removeEventListener('resize', compute);
+      window.removeEventListener('orientationchange', compute);
+    };
   }, []);
   return rows;
 }
 
-// register grid — 5 columns (तारीख़ column hati: date sirf history mein)
-const GRID = 'grid grid-cols-[2rem_1fr_5.2rem] sm:grid-cols-[2.4rem_minmax(0,2fr)_minmax(0,1.35fr)_minmax(0,0.9fr)_6.5rem]';
+// register grid — 6 columns (आख़िरी पतली column: WhatsApp share — हर मेहमान की
+// दाली उनके नंबर पर भेजी जा सकती है; तारीख़ column बहुत पहले हटी थी)
+const GRID = 'grid grid-cols-[2rem_1fr_5.2rem_1.9rem] sm:grid-cols-[2.4rem_minmax(0,2fr)_minmax(0,1.35fr)_minmax(0,0.9fr)_6.5rem_2.1rem]';
 
 interface NotebookProps {
   onRenameEvent: () => void;
@@ -166,6 +185,8 @@ export function Notebook({ onRenameEvent, onDeleteEvent, onPrint, onPdf, onHisto
   const [writeSignal, setWriteSignal] = useState(0);
   // khali filler line par click → likhai ki line WAHIN chali jati hai (line 5, 6… kahin bhi)
   const [writeAtFiller, setWriteAtFiller] = useState<number | null>(null);
+  // WhatsApp share strip — jis line ke neeche khula hai (number ke bina strip, number ke saath seedha bhejna)
+  const [shareFor, setShareFor] = useState<string | null>(null);
   // pehli baar ek chhota hint — "kahin bhi tap karke likh/sudhar sakte ho"
   const [showHint, setShowHint] = useState(() => {
     if (typeof window === 'undefined') return false;
@@ -200,7 +221,10 @@ export function Notebook({ onRenameEvent, onDeleteEvent, onPrint, onPdf, onHisto
   const pageEntries = sorted.slice(startIdx, startIdx + rowsPerPage);
   const writingPage = Math.floor(total / rowsPerPage) + 1; // page holding the writing slot
   const writingHere = writingPage === page;
-  const fillerCount = rowsPerPage - pageEntries.length - (writingHere ? 1 : 0);
+  // likhai ki line IS map ke andar slot par render hoti hai — pehle use dobara
+  // minus kar diya jata tha jisse page-ke-aakhri line se pehle hi writing line
+  // gayab ho jati thi (page bharte hi nayi line aaana band → auto-turn toot gaya)
+  const fillerCount = rowsPerPage - pageEntries.length;
 
   const pageSum = useMemo(() => pageEntries.reduce((a, e) => a + (e.amount || 0), 0), [pageEntries]);
   const totalSum = useMemo(() => sorted.reduce((a, e) => a + (e.amount || 0), 0), [sorted]);
@@ -271,14 +295,23 @@ export function Notebook({ onRenameEvent, onDeleteEvent, onPrint, onPdf, onHisto
     return () => window.removeEventListener('daali:write-focus', onWriteFocus);
   }, [focusWriting]);
 
-  // after a line is written: if the page became full, palat to the next page automatically
+  // after a line is written: if the writing slot left this page, palat to the
+  // next page automatically. Fresh totals come from the store (closure-stale
+  // pageEntries pe bharosa nahi) aur pen HAMESHA agli likhai line par ready.
   const onCommitted = useCallback(() => {
     setWriteAtFiller(null); // likh gayi → pen wapas pehli khali line par
-    if (pageEntries.length + 1 >= rowsPerPage) {
-      setPage(page + 1);
+    const st = useDaali.getState();
+    const newTotal = st.allEntries.filter((e) => e.eventId === st.currentEventId).length;
+    const wp = Math.floor(newTotal / rowsPerPage) + 1; // page holding the writing slot now
+    if (wp !== page && wp <= Math.ceil((newTotal + 1) / rowsPerPage)) {
+      setPage(wp);
       setTimeout(() => setWriteSignal((v) => v + 1), settings.pageAnimation ? 360 : 40);
+    } else {
+      // page adha bhara tha — pen agli khali line par turant ready
+      // (filler line se likha ho to bhi row remount hoke yahin sulakti hai)
+      setTimeout(() => setWriteSignal((v) => v + 1), 40);
     }
-  }, [pageEntries.length, rowsPerPage, page, setPage, settings.pageAnimation]);
+  }, [rowsPerPage, page, setPage, settings.pageAnimation]);
 
   // Keyboard page turning
   useEffect(() => {
@@ -506,7 +539,21 @@ export function Notebook({ onRenameEvent, onDeleteEvent, onPrint, onPdf, onHisto
                   serial={startIdx + i + 1}
                   isNew={newIds.has(entry.id)}
                   isHighlight={highlightId === entry.id}
-                  onEditCell={(cell) => setEditing({ id: entry.id, cell })}
+                  event={event}
+                  lang={settings.language}
+                  shareOpen={shareFor === entry.id}
+                  onToggleShare={() =>
+                    setShareFor((cur) => {
+                      const next = cur === entry.id ? null : entry.id;
+                      // share khula → editing band (ek waqt mein ek hi pen)
+                      if (next) setEditing(null);
+                      return next;
+                    })
+                  }
+                  onEditCell={(cell) => {
+                    setShareFor(null);
+                    setEditing({ id: entry.id, cell });
+                  }}
                 />
               )
             )}
@@ -522,7 +569,7 @@ export function Notebook({ onRenameEvent, onDeleteEvent, onPrint, onPdf, onHisto
                 return (
                   <WritingRow
                     key={`write-${page}-${slotK}`}
-                    serial={total + 1 + slotK}
+                    serial={total + 1}
                     script={settings.inputScript}
                     focusSignal={writeSignal}
                     onCommitted={onCommitted}
@@ -615,21 +662,44 @@ function RegisterRow({
   serial,
   isNew,
   isHighlight,
+  event,
+  lang,
+  shareOpen,
+  onToggleShare,
   onEditCell,
 }: {
   entry: DaaliEntry;
   serial: number;
   isNew: boolean;
   isHighlight: boolean;
+  event: DaaliEvent;
+  lang: Language;
+  shareOpen: boolean;
+  onToggleShare: () => void;
   onEditCell: (cell: EditCell) => void;
 }) {
   const t = useT();
   const amt = entryAmountText(entry);
+
+  // number pehle se saved hai → seedha WhatsApp khol do (ek hi tap)
+  const shareNow = () => {
+    const digits = normalizeWaDigits(entry.phone || '');
+    const url = waLink(digits, buildDaaliReceipt(event, entry, lang));
+    window.open(url, '_blank', 'noopener');
+    toast.success(t('whatsappOpening'), { duration: 1600 });
+  };
+  const onShareTap = () => {
+    if (entry.phone) shareNow();
+    else onToggleShare();
+  };
+
   return (
     <div
       className={`ruled-row ${GRID} cursor-text items-center text-[15px] text-ink ${
         isNew ? 'animate-write-in' : ''
-      } ${isHighlight ? 'highlight-flash' : ''} hover:bg-ink/[0.045] active:bg-ink/[0.08]`}
+      } ${isHighlight ? 'highlight-flash' : ''} hover:bg-ink/[0.045] active:bg-ink/[0.08] ${
+        shareOpen ? 'bg-ink/[0.03]' : ''
+      }`}
       onClick={() => onEditCell('name')}
       role="button"
       tabIndex={0}
@@ -723,7 +793,103 @@ function RegisterRow({
           </span>
         )}
       </div>
+      {/* WhatsApp — har mehmaan ki daali unke mobile par */}
+      <div className="flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+        <button
+          type="button"
+          className="flex h-8 w-8 items-center justify-center rounded-full text-[#25D366]/60 transition-colors hover:bg-[#25D366]/10 hover:text-[#1da851] active:text-[#1da851]"
+          onClick={onShareTap}
+          aria-label={`${t('shareWhatsapp')}: ${entry.name}`}
+          title={entry.phone ? `${t('shareWhatsapp')} — ${entry.phone}` : t('phoneLabel')}
+        >
+          <MessageCircle className="h-[1.15rem] w-[1.15rem]" />
+        </button>
+      </div>
+
+      {/* number nahi tha → wahin neeche chhota phone strip khula (koi popup nahi) */}
+      {shareOpen && (
+        <ShareStrip
+          entry={entry}
+          event={event}
+          lang={lang}
+          onClose={onToggleShare}
+        />
+      )}
       {/* तारीख़ column hati — date sirf history/backup mein rehti hai */}
+    </div>
+  );
+}
+
+// WhatsApp share strip — line ke neeche hi khulta hai: number likho → भेजें
+function ShareStrip({
+  entry,
+  event,
+  lang,
+  onClose,
+}: {
+  entry: DaaliEntry;
+  event: DaaliEvent;
+  lang: Language;
+  onClose: () => void;
+}) {
+  const t = useT();
+  const setEntryPhone = useDaali((s) => s.setEntryPhone);
+  const [phone, setPhone] = useState(entry.phone || '');
+
+  const send = () => {
+    const digits = normalizeWaDigits(phone);
+    const url = waLink(digits, buildDaaliReceipt(event, entry, lang));
+    // pehle WhatsApp kholo (user-gesture chain tootna nahi chahiye), phir save
+    window.open(url, '_blank', 'noopener');
+    void setEntryPhone(entry.id, phone).then(() => {
+      toast.success(t('numberSavedToast'), { duration: 1400 });
+    });
+    toast.success(t('whatsappOpening'), { duration: 1600 });
+    onClose();
+  };
+
+  return (
+    <div className="col-span-full flex flex-wrap items-center gap-1.5 pb-1.5 pt-0.5">
+      <span className="text-base" aria-hidden="true">
+        💬
+      </span>
+      <input
+        className="cell-input min-w-0 flex-1 text-[14px]"
+        placeholder={t('phonePh')}
+        value={phone}
+        inputMode="tel"
+        autoComplete="off"
+        autoFocus
+        aria-label={t('phoneLabel')}
+        onChange={(e) => setPhone(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            send();
+          }
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            onClose();
+          }
+        }}
+      />
+      <button
+        type="button"
+        className="flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-[#25D366]/60 bg-[#25D366]/15 px-3 text-[15px] font-bold text-[#15703a] hover:bg-[#25D366]/25"
+        onClick={send}
+      >
+        <MessageCircle className="h-4 w-4" />
+        {t('sendWhatsapp')}
+      </button>
+      <button
+        type="button"
+        className="ghost-ink-btn flex h-9 w-9 shrink-0 items-center justify-center !border-ink/25"
+        onClick={onClose}
+        aria-label={t('cancel')}
+        title={t('cancel')}
+      >
+        <X className="h-4 w-4" />
+      </button>
     </div>
   );
 }
@@ -742,6 +908,7 @@ function FillerRow({ onClick, label }: { onClick: () => void; label: string }) {
       <div />
       <div className="hidden sm:block" />
       <div className="hidden sm:block" />
+      <div />
       <div />
     </div>
   );
