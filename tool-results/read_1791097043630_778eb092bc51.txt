@@ -1,0 +1,749 @@
+     1→'use client';
+     2→
+     3→import {
+     4→  useCallback,
+     5→  useEffect,
+     6→  useLayoutEffect,
+     7→  useMemo,
+     8→  useRef,
+     9→  useState,
+    10→} from 'react';
+    11→import { useDaali, sortEntries } from '@/lib/daali/store';
+    12→import {
+    13→  countItemEntries,
+    14→  entryAmountText,
+    15→  formatNumber,
+    16→  formatRupees,
+    17→  isoToDisplayDate,
+    18→  isArabicText,
+    19→} from '@/lib/daali/format';
+    20→import type { DaaliEntry } from '@/lib/daali/types';
+    21→import { useT } from './use-t';
+    22→import { WritingRow, EntryEditRow, type EditCell } from './inline-entry';
+    23→import { toast } from 'sonner';
+    24→import {
+    25→  ChevronLeft,
+    26→  ChevronRight,
+    27→  FileDown,
+    28→  History,
+    29→  MoreVertical,
+    30→  Pencil,
+    31→  Printer,
+    32→  Trash2,
+    33→  Undo2,
+    34→} from 'lucide-react';
+    35→import {
+    36→  DropdownMenu,
+    37→  DropdownMenuContent,
+    38→  DropdownMenuItem,
+    39→  DropdownMenuSeparator,
+    40→  DropdownMenuTrigger,
+    41→} from '@/components/ui/dropdown-menu';
+    42→
+    43→// Dynamic rows-per-page: pages feel like a real register on every screen size
+    44→function useRowsPerPage(): number {
+    45→  const [rows, setRows] = useState(8);
+    46→  useEffect(() => {
+    47→    const compute = () => {
+    48→      const h = window.innerHeight;
+    49→      const w = window.innerWidth;
+    50→      const rowH = w >= 640 ? 50 : 46;
+    51→      const overhead = w >= 640 ? 385 : 360;
+    52→      const n = Math.floor((h - overhead) / rowH);
+    53→      setRows(Math.min(18, Math.max(6, n)));
+    54→    };
+    55→    compute();
+    56→    window.addEventListener('resize', compute);
+    57→    return () => window.removeEventListener('resize', compute);
+    58→  }, []);
+    59→  return rows;
+    60→}
+    61→
+    62→// register grid — 5 columns (तारीख़ column hati: date sirf history mein)
+    63→const GRID = 'grid grid-cols-[2rem_1fr_5.2rem] sm:grid-cols-[2.4rem_minmax(0,2fr)_minmax(0,1.35fr)_minmax(0,0.9fr)_6.5rem]';
+    64→
+    65→interface NotebookProps {
+    66→  onRenameEvent: () => void;
+    67→  onDeleteEvent: () => void;
+    68→  onPrint: () => void;
+    69→  onPdf: () => void;
+    70→  onHistory: () => void;
+    71→}
+    72→
+    73→// ─── शीर्षक की जानकारी — tap करो, वहीं pen चल जाती है (कोई popup नहीं) ─────────
+    74→function HeaderField({
+    75→  value,
+    76→  display,
+    77→  onSave,
+    78→  type = 'text',
+    79→  ariaLabel,
+    80→}: {
+    81→  value: string;
+    82→  /** what the paper shows (e.g. formatted date) — defaults to value */
+    83→  display?: string;
+    84→  onSave: (v: string) => void;
+    85→  type?: 'text' | 'date';
+    86→  ariaLabel: string;
+    87→}) {
+    88→  const t = useT();
+    89→  const [editing, setEditing] = useState(false);
+    90→  const [draft, setDraft] = useState(value);
+    91→
+    92→  const start = () => {
+    93→    setDraft(value);
+    94→    setEditing(true);
+    95→  };
+    96→  const commit = () => {
+    97→    setEditing(false);
+    98→    const v = draft.trim();
+    99→    if (v !== value) onSave(v);
+   100→  };
+   101→
+   102→  if (editing) {
+   103→    return (
+   104→      <input
+   105→        autoFocus
+   106→        type={type}
+   107→        value={draft}
+   108→        aria-label={ariaLabel}
+   109→        className="cell-input !w-auto max-w-full rounded font-hand text-base font-bold"
+   110→        style={{ minWidth: type === 'date' ? '9.5rem' : '4ch' }}
+   111→        onChange={(e) => setDraft(e.target.value)}
+   112→        onBlur={commit}
+   113→        onKeyDown={(e) => {
+   114→          if (e.key === 'Enter') {
+   115→            e.preventDefault();
+   116→            commit();
+   117→          }
+   118→          if (e.key === 'Escape') {
+   119→            e.preventDefault();
+   120→            setEditing(false);
+   121→          }
+   122→        }}
+   123→      />
+   124→    );
+   125→  }
+   126→  return (
+   127→    <span
+   128→      className="paper-blank cursor-text font-hand font-bold decoration-ink/25 underline-offset-4 hover:underline"
+   129→      role="button"
+   130→      tabIndex={0}
+   131→      title={t('headerEditHint')}
+   132→      aria-label={`${ariaLabel}: ${display ?? value}`}
+   133→      onClick={start}
+   134→      onKeyDown={(e) => {
+   135→        if (e.key === 'Enter' || e.key === ' ') {
+   136→          e.preventDefault();
+   137→          start();
+   138→        }
+   139→      }}
+   140→    >
+   141→      {display ?? (value || '\u00A0')}
+   142→    </span>
+   143→  );
+   144→}
+   145→
+   146→export function Notebook({ onRenameEvent, onDeleteEvent, onPrint, onPdf, onHistory }: NotebookProps) {
+   147→  const t = useT();
+   148→  const events = useDaali((s) => s.events);
+   149→  const allEntries = useDaali((s) => s.allEntries);
+   150→  const currentEventId = useDaali((s) => s.currentEventId);
+   151→  const currentPage = useDaali((s) => s.currentPage);
+   152→  const setPage = useDaali((s) => s.setPage);
+   153→  const goHome = useDaali((s) => s.goHome);
+   154→  const highlightId = useDaali((s) => s.highlightId);
+   155→  const settings = useDaali((s) => s.settings);
+   156→  const setInputScript = useDaali((s) => s.setInputScript);
+   157→  const updateEvent = useDaali((s) => s.updateEvent);
+   158→
+   159→  const rowsPerPage = useRowsPerPage();
+   160→  const [flip, setFlip] = useState<'next' | 'prev' | null>(null);
+   161→  const [newIds, setNewIds] = useState<Set<string>>(new Set());
+   162→  const knownIds = useRef<Set<string>>(new Set());
+   163→  const firstRender = useRef(true);
+   164→  const touch = useRef<{ x: number; y: number } | null>(null);
+   165→  const [editing, setEditing] = useState<{ id: string; cell: EditCell } | null>(null);
+   166→  const [writeSignal, setWriteSignal] = useState(0);
+   167→  // khali filler line par click → likhai ki line WAHIN chali jati hai (line 5, 6… kahin bhi)
+   168→  const [writeAtFiller, setWriteAtFiller] = useState<number | null>(null);
+   169→  // pehli baar ek chhota hint — "kahin bhi tap karke likh/sudhar sakte ho"
+   170→  const [showHint, setShowHint] = useState(() => {
+   171→    if (typeof window === 'undefined') return false;
+   172→    try {
+   173→      return !window.localStorage.getItem('daali-edit-hint-v1');
+   174→    } catch {
+   175→      return false;
+   176→    }
+   177→  });
+   178→  const dismissHint = () => {
+   179→    setShowHint(false);
+   180→    try {
+   181→      window.localStorage.setItem('daali-edit-hint-v1', '1');
+   182→    } catch {
+   183→      /* ignore */
+   184→    }
+   185→  };
+   186→
+   187→  const event = events.find((e) => e.id === currentEventId);
+   188→
+   189→  const sorted = useMemo(
+   190→    () => sortEntries(allEntries.filter((e) => e.eventId === currentEventId), settings.sortMode),
+   191→    [allEntries, currentEventId, settings.sortMode]
+   192→  );
+   193→
+   194→  const total = sorted.length;
+   195→  // +1: the next empty line (writing slot) counts as a page content line —
+   196→  // jaise asli register mein agli khali line hamesha hoti hai
+   197→  const pageCount = Math.max(1, Math.ceil((total + 1) / rowsPerPage));
+   198→  const page = Math.min(currentPage, pageCount);
+   199→  const startIdx = (page - 1) * rowsPerPage;
+   200→  const pageEntries = sorted.slice(startIdx, startIdx + rowsPerPage);
+   201→  const writingPage = Math.floor(total / rowsPerPage) + 1; // page holding the writing slot
+   202→  const writingHere = writingPage === page;
+   203→  const fillerCount = rowsPerPage - pageEntries.length - (writingHere ? 1 : 0);
+   204→
+   205→  const pageSum = useMemo(() => pageEntries.reduce((a, e) => a + (e.amount || 0), 0), [pageEntries]);
+   206→  const totalSum = useMemo(() => sorted.reduce((a, e) => a + (e.amount || 0), 0), [sorted]);
+   207→  const itemCount = useMemo(() => countItemEntries(sorted), [sorted]);
+   208→  const cashCount = useMemo(() => sorted.filter((e) => e.amount > 0).length, [sorted]);
+   209→  const avg = cashCount > 0 ? Math.round(totalSum / cashCount) : 0;
+   210→
+   211→  // Detect newly added entries → write-in animation
+   212→  useLayoutEffect(() => {
+   213→    if (firstRender.current) {
+   214→      knownIds.current = new Set(allEntries.map((e) => e.id));
+   215→      firstRender.current = false;
+   216→      return;
+   217→    }
+   218→    const fresh = allEntries.filter((e) => !knownIds.current.has(e.id));
+   219→    if (fresh.length) {
+   220→      for (const f of fresh) knownIds.current.add(f.id);
+   221→      setNewIds(new Set(fresh.map((f) => f.id)));
+   222→      const timer = setTimeout(() => setNewIds(new Set()), 500);
+   223→      return () => clearTimeout(timer);
+   224→    }
+   225→  }, [allEntries]);
+   226→
+   227→  const turn = useCallback(
+   228→    (dir: 'next' | 'prev') => {
+   229→      const target = dir === 'next' ? page + 1 : page - 1;
+   230→      if (target < 1 || target > pageCount) return;
+   231→      setEditing(null);
+   232→      setPage(target);
+   233→      if (settings.pageAnimation) {
+   234→        setFlip(dir);
+   235→        setTimeout(() => setFlip(null), 320);
+   236→      }
+   237→    },
+   238→    [page, pageCount, setPage, settings.pageAnimation]
+   239→  );
+   240→
+   241→  const jumpTo = useCallback(
+   242→    (n: number) => {
+   243→      const target = Math.min(Math.max(1, n), pageCount);
+   244→      if (target !== page && settings.pageAnimation) {
+   245→        setFlip(target > page ? 'next' : 'prev');
+   246→        setTimeout(() => setFlip(null), 320);
+   247→      }
+   248→      setEditing(null);
+   249→      setPage(target);
+   250→    },
+   251→    [page, pageCount, setPage, settings.pageAnimation]
+   252→  );
+   253→
+   254→  // kahin bhi khali line par click → wahin pen rakh do (writing line par le jao)
+   255→  const focusWriting = useCallback(() => {
+   256→    setEditing(null);
+   257→    setWriteAtFiller(null);
+   258→    if (writingPage !== page) {
+   259→      setPage(writingPage);
+   260→      setTimeout(() => setWriteSignal((v) => v + 1), settings.pageAnimation ? 360 : 40);
+   261→    } else {
+   262→      setWriteSignal((v) => v + 1);
+   263→    }
+   264→  }, [writingPage, page, setPage, settings.pageAnimation]);
+   265→
+   266→  // ＋ button (bottom nav / top bar) → jump to the writing line and start writing.
+   267→  // Arrives as a window event so state updates happen in a callback, not in an effect body.
+   268→  useEffect(() => {
+   269→    const onWriteFocus = () => focusWriting();
+   270→    window.addEventListener('daali:write-focus', onWriteFocus);
+   271→    return () => window.removeEventListener('daali:write-focus', onWriteFocus);
+   272→  }, [focusWriting]);
+   273→
+   274→  // after a line is written: if the page became full, palat to the next page automatically
+   275→  const onCommitted = useCallback(() => {
+   276→    setWriteAtFiller(null); // likh gayi → pen wapas pehli khali line par
+   277→    if (pageEntries.length + 1 >= rowsPerPage) {
+   278→      setPage(page + 1);
+   279→      setTimeout(() => setWriteSignal((v) => v + 1), settings.pageAnimation ? 360 : 40);
+   280→    }
+   281→  }, [pageEntries.length, rowsPerPage, page, setPage, settings.pageAnimation]);
+   282→
+   283→  // Keyboard page turning
+   284→  useEffect(() => {
+   285→    const onKey = (e: KeyboardEvent) => {
+   286→      const el = e.target as HTMLElement | null;
+   287→      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)) return;
+   288→      if (e.metaKey || e.ctrlKey || e.altKey) return;
+   289→      if (e.key === 'ArrowRight') turn('next');
+   290→      if (e.key === 'ArrowLeft') turn('prev');
+   291→    };
+   292→    window.addEventListener('keydown', onKey);
+   293→    return () => window.removeEventListener('keydown', onKey);
+   294→  }, [turn]);
+   295→
+   296→  // Swipe (mobile) — like palat-ing a page
+   297→  const onTouchStart = (e: React.TouchEvent) => {
+   298→    const tch = e.touches[0];
+   299→    touch.current = { x: tch.clientX, y: tch.clientY };
+   300→  };
+   301→  const onTouchEnd = (e: React.TouchEvent) => {
+   302→    if (!touch.current) return;
+   303→    const tch = e.changedTouches[0];
+   304→    const dx = tch.clientX - touch.current.x;
+   305→    const dy = tch.clientY - touch.current.y;
+   306→    touch.current = null;
+   307→    if (Math.abs(dx) > 65 && Math.abs(dx) > Math.abs(dy) * 1.6) {
+   308→      turn(dx < 0 ? 'next' : 'prev');
+   309→    }
+   310→  };
+   311→
+   312→  const flipClass =
+   313→    flip === 'next' ? 'page-turn-next' : flip === 'prev' ? 'page-turn-prev' : '';
+   314→
+   315→  const scriptOptions: Array<{ v: 'hi' | 'ur' | 'off'; label: string }> = [
+   316→    { v: 'hi', label: t('scriptHi') },
+   317→    { v: 'ur', label: t('scriptUr') },
+   318→    { v: 'off', label: t('scriptEn') },
+   319→  ];
+   320→
+   321→  if (!event) return null;
+   322→
+   323→  return (
+   324→    <div className="flex h-full flex-col">
+   325→      {/* ── top bar ── */}
+   326→      <div className="no-print flex items-center gap-1.5 px-2 pt-2 sm:gap-2 sm:px-6">
+   327→        <button
+   328→          className="ghost-ink-btn flex h-10 w-10 shrink-0 items-center justify-center !border-ink/25"
+   329→          onClick={goHome}
+   330→          aria-label={t('goBack')}
+   331→        >
+   332→          <Undo2 className="h-5 w-5" />
+   333→        </button>
+   334→        <div className="min-w-0 flex-1 text-center">
+   335→          <div className="truncate font-hand text-xl font-bold text-ink">{event.name}</div>
+   336→        </div>
+   337→        {/* writing script: हिं / اردو / Aa */}
+   338→        <div
+   339→          className="flex h-10 shrink-0 items-center overflow-hidden rounded-md border border-ink/25"
+   340→          role="group"
+   341→          aria-label={t('scriptLabel')}
+   342→          title={t('scriptHint')}
+   343→        >
+   344→          {scriptOptions.map((o) => (
+   345→            <button
+   346→              key={o.v}
+   347→              className={`h-full px-2 text-[15px] font-bold transition-colors ${
+   348→                settings.inputScript === o.v
+   349→                  ? 'bg-ink text-[#f7f2e2]'
+   350→                  : 'text-ink hover:bg-ink/[0.07]'
+   351→              }`}
+   352→              onClick={() => setInputScript(o.v)}
+   353→              aria-pressed={settings.inputScript === o.v}
+   354→              aria-label={`${t('scriptLabel')}: ${o.label}`}
+   355→            >
+   356→              {o.label}
+   357→            </button>
+   358→          ))}
+   359→        </div>
+   360→        <button
+   361→          className="ghost-ink-btn flex h-10 w-10 shrink-0 items-center justify-center !border-ink/25"
+   362→          onClick={onPdf}
+   363→          aria-label={t('pdfDownload')}
+   364→          title={t('pdfDownload')}
+   365→        >
+   366→          <FileDown className="h-5 w-5" />
+   367→        </button>
+   368→        <DropdownMenu>
+   369→          <DropdownMenuTrigger asChild>
+   370→            <button
+   371→              className="ghost-ink-btn flex h-10 w-10 shrink-0 items-center justify-center !border-ink/25"
+   372→              aria-label={t('navMore')}
+   373→            >
+   374→              <MoreVertical className="h-5 w-5" />
+   375→            </button>
+   376→          </DropdownMenuTrigger>
+   377→          <DropdownMenuContent align="end" className="border-border">
+   378→            <DropdownMenuItem onClick={onRenameEvent}>
+   379→              <Pencil className="h-4 w-4" /> {t('renameEvent')}
+   380→            </DropdownMenuItem>
+   381→            <DropdownMenuItem onClick={onPdf}>
+   382→              <FileDown className="h-4 w-4" /> {t('pdfDownload')}
+   383→            </DropdownMenuItem>
+   384→            <DropdownMenuItem onClick={onHistory}>
+   385→              <History className="h-4 w-4" /> {t('viewHistory')}
+   386→            </DropdownMenuItem>
+   387→            <DropdownMenuItem onClick={onPrint}>
+   388→              <Printer className="h-4 w-4" /> {t('printPdf')}
+   389→            </DropdownMenuItem>
+   390→            <DropdownMenuSeparator />
+   391→            <DropdownMenuItem onClick={onDeleteEvent} className="text-destructive focus:text-destructive">
+   392→              <Trash2 className="h-4 w-4" /> {t('delete')}
+   393→            </DropdownMenuItem>
+   394→          </DropdownMenuContent>
+   395→        </DropdownMenu>
+   396→      </div>
+   397→
+   398→      {/* ── tap-to-edit hint (first visit only) ── */}
+   399→      {showHint && (
+   400→        <div className="no-print mx-2 mt-1 flex items-center gap-2 rounded-md border border-dashed border-ink/30 bg-[var(--paper-2)] px-3 py-1.5 sm:mx-6">
+   401→          <Pencil className="h-4 w-4 shrink-0 text-margin-red" aria-hidden="true" />
+   402→          <p className="min-w-0 flex-1 text-[12.5px] leading-snug text-ink-soft">{t('editHint')}</p>
+   403→          <button type="button" className="chip h-7 shrink-0 px-2 text-[12px]" onClick={dismissHint}>
+   404→            {t('editHintOk')}
+   405→          </button>
+   406→        </div>
+   407→      )}
+   408→
+   409→      {/* ── scrollable register area ── */}
+   410→      <div
+   411→        className="no-print flex flex-1 items-start justify-center overflow-y-auto px-2 py-2 sm:px-6 sm:py-3"
+   412→        onTouchStart={onTouchStart}
+   413→        onTouchEnd={onTouchEnd}
+   414→        style={{ scrollbarWidth: 'thin' }}
+   415→      >
+   416→        <div
+   417→          key={page}
+   418→          className={`paper flex min-h-full w-full max-w-3xl flex-col pb-2 ${flipClass}`}
+   419→          role="region"
+   420→          aria-label={`${t('daaliRegister')} — ${event.name}`}
+   421→        >
+   422→          <div className="paper-spine" />
+   423→          <div className="paper-margin" />
+   424→
+   425→          {/* page number */}
+   426→          <div className="absolute end-3 top-2 font-hand text-xs text-ink-soft">
+   427→            {t('page')} {page}
+   428→          </div>
+   429→
+   430→          {/* header — like a real register heading */}
+   431→          <header className="px-4 pt-3 text-center sm:px-8">
+   432→            <h1 className="font-hand text-2xl font-bold text-ink sm:text-3xl">{t('daaliRegister')}</h1>
+   433→            <div className="mx-auto mt-0.5 mb-1 h-px w-40 bg-ink/20" />
+   434→            <div className="mt-2 text-[15px] leading-7 sm:mt-3">
+   435→              <div className="text-ink">
+   436→                <span className="text-ink-soft">{t('eventLabel')}: </span>
+   437→                <HeaderField
+   438→                  value={event.name}
+   439→                  ariaLabel={t('eventLabel')}
+   440→                  onSave={(v) => {
+   441→                    updateEvent(event.id, { name: v });
+   442→                    toast.success(t('updatedToast'), { duration: 1200 });
+   443→                  }}
+   444→                />
+   445→              </div>
+   446→              <div className="mt-0.5 grid grid-cols-1 gap-x-6 sm:grid-cols-2">
+   447→                <div className="text-start sm:text-end">
+   448→                  <span className="text-ink-soft">{t('dateLabel')}: </span>
+   449→                  <HeaderField
+   450→                    type="date"
+   451→                    value={event.date}
+   452→                    display={event.date ? isoToDisplayDate(event.date) : ''}
+   453→                    ariaLabel={t('dateLabel')}
+   454→                    onSave={(v) => {
+   455→                      updateEvent(event.id, { date: v });
+   456→                      toast.success(t('updatedToast'), { duration: 1200 });
+   457→                    }}
+   458→                  />
+   459→                </div>
+   460→                <div className="text-start">
+   461→                  <span className="text-ink-soft">{t('villageLabel')}: </span>
+   462→                  <HeaderField
+   463→                    value={event.location}
+   464→                    ariaLabel={t('villageLabel')}
+   465→                    onSave={(v) => {
+   466→                      updateEvent(event.id, { location: v });
+   467→                      toast.success(t('updatedToast'), { duration: 1200 });
+   468→                    }}
+   469→                  />
+   470→                </div>
+   471→              </div>
+   472→            </div>
+   473→          </header>
+   474→
+   475→          {/* register rows — likha hua + agli khali line, sab seedha line par */}
+   476→          <div className="register-rows mt-3 flex-1">
+   477→            {/* column header */}
+   478→            <div className={`${GRID} border-b-2 border-ink/50 pb-1 text-[13px] font-bold text-ink`}>
+   479→              <div className="text-center">{t('colCr')}</div>
+   480→              <div>{t('colName')}</div>
+   481→              <div className="hidden sm:block">{t('colVillage')}</div>
+   482→              <div className="hidden sm:block">{t('colRelation')}</div>
+   483→              <div className="text-end">{t('colAmount')}</div>
+   484→            </div>
+   485→
+   486→            {total === 0 && page === 1 && (
+   487→              <p className="px-1 pb-1 pt-2 text-center font-hand text-[15px] leading-snug text-ink-soft/75">
+   488→                {t('firstLineHint')}
+   489→              </p>
+   490→            )}
+   491→
+   492→            {pageEntries.map((entry, i) =>
+   493→              editing?.id === entry.id ? (
+   494→                <EntryEditRow
+   495→                  key={entry.id}
+   496→                  entry={entry}
+   497→                  serial={startIdx + i + 1}
+   498→                  script={settings.inputScript}
+   499→                  focusCell={editing.cell}
+   500→                  onDone={() => setEditing((cur) => (cur && cur.id === entry.id ? null : cur))}
+   501→                />
+   502→              ) : (
+   503→                <RegisterRow
+   504→                  key={entry.id}
+   505→                  entry={entry}
+   506→                  serial={startIdx + i + 1}
+   507→                  isNew={newIds.has(entry.id)}
+   508→                  isHighlight={highlightId === entry.id}
+   509→                  onEditCell={(cell) => setEditing({ id: entry.id, cell })}
+   510→                />
+   511→              )
+   512→            )}
+   513→
+   514→            {/* khali ruled lines — likhai ki line pehli khali line par hoti hai;
+   515→                koi bhi khali line par click karo → pen WAHIN chala jata hai */}
+   516→            {Array.from({ length: Math.max(0, fillerCount) }).map((_, i) => {
+   517→              if (!writingHere) {
+   518→                return <FillerRow key={`filler-${page}-${i}`} onClick={focusWriting} label={t('writeHere')} />;
+   519→              }
+   520→              const slotK = writeAtFiller ?? 0;
+   521→              if (i === slotK) {
+   522→                return (
+   523→                  <WritingRow
+   524→                    key={`write-${page}-${slotK}`}
+   525→                    serial={total + 1 + slotK}
+   526→                    script={settings.inputScript}
+   527→                    focusSignal={writeSignal}
+   528→                    onCommitted={onCommitted}
+   529→                    onCancel={() => setWriteAtFiller(null)}
+   530→                    autoStart={slotK > 0}
+   531→                  />
+   532→                );
+   533→              }
+   534→              return (
+   535→                <FillerRow
+   536→                  key={`filler-${page}-${i}`}
+   537→                  onClick={() => setWriteAtFiller(i)}
+   538→                  label={t('writeHere')}
+   539→                />
+   540→              );
+   541→            })}
+   542→          </div>
+   543→
+   544→          {/* totals — printed inside the register */}
+   545→          <footer className="mt-2 px-4 pb-1 sm:px-8">
+   546→            <div className="border-t-2 border-ink/60 pt-2 text-center">
+   547→              <div className="font-hand text-xl font-bold text-ink sm:text-2xl">
+   548→                {t('totalPeople')}: {formatNumber(total)}
+   549→                <span className="mx-2 text-margin-red">•</span>
+   550→                {t('totalDaali')}: {formatRupees(totalSum)}
+   551→                {itemCount > 0 && (
+   552→                  <>
+   553→                    <span className="mx-2 text-margin-red">•</span>
+   554→                    {t('itemCount')}: {formatNumber(itemCount)}
+   555→                  </>
+   556→                )}
+   557→              </div>
+   558→              <div className="mt-0.5 flex items-center justify-center gap-4 text-xs text-ink-soft">
+   559→                <span>
+   560→                  {t('pageTotal')}: {pageEntries.length} • {formatRupees(pageSum)}
+   561→                </span>
+   562→                {total > 0 && (
+   563→                  <span>
+   564→                    {t('average')}: {formatRupees(avg)}
+   565→                  </span>
+   566→                )}
+   567→              </div>
+   568→            </div>
+   569→          </footer>
+   570→        </div>
+   571→      </div>
+   572→
+   573→      {/* ── page controls ── */}
+   574→      <div className="no-print flex items-center justify-center gap-2 px-3 pb-2 sm:gap-3">
+   575→        <button
+   576→          className="ghost-ink-btn flex h-11 w-11 items-center justify-center !border-ink/30"
+   577→          onClick={() => turn('prev')}
+   578→          disabled={page <= 1}
+   579→          aria-label={t('goBack')}
+   580→        >
+   581→          <ChevronLeft className="h-5 w-5" />
+   582→        </button>
+   583→        <div className="flex items-center gap-1.5 font-hand text-base text-ink">
+   584→          <span>{t('page')}</span>
+   585→          <input
+   586→            type="number"
+   587→            inputMode="numeric"
+   588→            className="h-9 w-14 rounded border border-ink/30 bg-transparent text-center font-hand text-base text-ink outline-none focus:border-margin-red"
+   589→            value={page}
+   590→            min={1}
+   591→            max={pageCount}
+   592→            aria-label={`${t('page')} — 1..${pageCount}`}
+   593→            onChange={(e) => {
+   594→              const n = parseInt(e.target.value, 10);
+   595→              if (Number.isFinite(n)) jumpTo(n);
+   596→            }}
+   597→          />
+   598→          <span>/ {pageCount}</span>
+   599→        </div>
+   600→        <button
+   601→          className="ghost-ink-btn flex h-11 w-11 items-center justify-center !border-ink/30"
+   602→          onClick={() => turn('next')}
+   603→          disabled={page >= pageCount}
+   604→          aria-label="Next page"
+   605→        >
+   606→          <ChevronRight className="h-5 w-5" />
+   607→        </button>
+   608→      </div>
+   609→    </div>
+   610→  );
+   611→}
+   612→
+   613→function RegisterRow({
+   614→  entry,
+   615→  serial,
+   616→  isNew,
+   617→  isHighlight,
+   618→  onEditCell,
+   619→}: {
+   620→  entry: DaaliEntry;
+   621→  serial: number;
+   622→  isNew: boolean;
+   623→  isHighlight: boolean;
+   624→  onEditCell: (cell: EditCell) => void;
+   625→}) {
+   626→  const t = useT();
+   627→  const amt = entryAmountText(entry);
+   628→  return (
+   629→    <div
+   630→      className={`ruled-row ${GRID} cursor-text items-center text-[15px] text-ink ${
+   631→        isNew ? 'animate-write-in' : ''
+   632→      } ${isHighlight ? 'highlight-flash' : ''} hover:bg-ink/[0.045] active:bg-ink/[0.08]`}
+   633→      onClick={() => onEditCell('name')}
+   634→      role="button"
+   635→      tabIndex={0}
+   636→      onKeyDown={(e) => {
+   637→        if (e.key === 'Enter' || e.key === ' ') {
+   638→          e.preventDefault();
+   639→          onEditCell('name');
+   640→        }
+   641→      }}
+   642→      aria-label={`${entry.name}, ${amt.text}`}
+   643→    >
+   644→      <div className="text-center text-[13px] text-ink-soft">{String(serial).padStart(2, '0')}</div>
+   645→      <div
+   646→        className="min-w-0 px-0.5 py-1"
+   647→        onClick={(e) => {
+   648→          e.stopPropagation();
+   649→          onEditCell('name');
+   650→        }}
+   651→      >
+   652→        <div className={`truncate font-semibold leading-tight ${isArabicText(entry.name) ? 'urdu-text' : ''}`}>
+   653→          {entry.name}
+   654→          {entry.note && (
+   655→            <span className="ml-1 text-xs text-ink-soft" title={entry.note}>
+   656→              ✎
+   657→            </span>
+   658→          )}
+   659→        </div>
+   660→        <div className={`truncate text-xs leading-tight text-ink-soft sm:hidden ${isArabicText(entry.village) || isArabicText(entry.relationship) ? 'urdu-text' : ''}`}>
+   661→          {/* गाँव/रिश्ता अलग-अलग tap — jaise copy mein kisi bhi word par pen rakhte hain */}
+   662→          {entry.village ? (
+   663→            <span
+   664→              role="button"
+   665→              className="active:text-ink"
+   666→              onClick={(e) => {
+   667→                e.stopPropagation();
+   668→                onEditCell('village');
+   669→              }}
+   670→            >
+   671→              {entry.village}
+   672→            </span>
+   673→          ) : null}
+   674→          {entry.village && entry.relationship ? ' • ' : ''}
+   675→          {entry.relationship ? (
+   676→            <span
+   677→              role="button"
+   678→              className="active:text-ink"
+   679→              onClick={(e) => {
+   680→                e.stopPropagation();
+   681→                onEditCell('relation');
+   682→              }}
+   683→            >
+   684→              {entry.relationship}
+   685→            </span>
+   686→          ) : null}
+   687→          {!entry.village && !entry.relationship ? '\u00A0' : ''}
+   688→        </div>
+   689→      </div>
+   690→      <div
+   691→        className={`hidden min-w-0 truncate px-0.5 text-sm sm:block ${isArabicText(entry.village) ? 'urdu-text' : ''}`}
+   692→        onClick={(e) => {
+   693→          e.stopPropagation();
+   694→          onEditCell('village');
+   695→        }}
+   696→      >
+   697→        {entry.village || '—'}
+   698→      </div>
+   699→      <div
+   700→        className={`hidden min-w-0 truncate px-0.5 text-sm sm:block ${isArabicText(entry.relationship) ? 'urdu-text' : ''}`}
+   701→        onClick={(e) => {
+   702→          e.stopPropagation();
+   703→          onEditCell('relation');
+   704→        }}
+   705→      >
+   706→        {entry.relationship || '—'}
+   707→      </div>
+   708→      <div
+   709→        className="px-0.5 text-end"
+   710→        title={amt.cash ? undefined : t('itemMode')}
+   711→        onClick={(e) => {
+   712→          e.stopPropagation();
+   713→          onEditCell('amount');
+   714→        }}
+   715→      >
+   716→        {amt.cash ? (
+   717→          <span className="font-bold tabular-nums" style={{ fontVariantNumeric: 'tabular-nums' }}>
+   718→            {amt.text}
+   719→          </span>
+   720→        ) : (
+   721→          <span className={`inline-block max-w-full truncate font-hand text-[15px] text-ink-soft ${isArabicText(amt.text) ? 'urdu-text' : ''}`}>
+   722→            🎁 {amt.text}
+   723→          </span>
+   724→        )}
+   725→      </div>
+   726→      {/* तारीख़ column hati — date sirf history/backup mein rehti hai */}
+   727→    </div>
+   728→  );
+   729→}
+   730→
+   731→// khali ruled line — click karne par pen isi line par aa jata hai
+   732→function FillerRow({ onClick, label }: { onClick: () => void; label: string }) {
+   733→  return (
+   734→    <div
+   735→      role="button"
+   736→      tabIndex={-1}
+   737→      aria-label={label}
+   738→      className={`ruled-row ${GRID} cursor-text items-center hover:bg-ink/[0.035]`}
+   739→      onClick={onClick}
+   740→    >
+   741→      <div />
+   742→      <div />
+   743→      <div className="hidden sm:block" />
+   744→      <div className="hidden sm:block" />
+   745→      <div />
+   746→    </div>
+   747→  );
+   748→}
+   749→

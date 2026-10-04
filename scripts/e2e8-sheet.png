@@ -1,0 +1,21 @@
+- generic
+  - heading "दाली रजिस्टर" [level=1, ref=e2]
+  - paragraph
+    - StaticText "आपकी शादी की दाली अब आपकी मोबाइल कॉपी में।"
+  - button "＋ अपना पहला रजिस्टर बनाएँ" [ref=e3]
+    - StaticText "＋ अपना पहला रजिस्टर बनाएँ"
+  - paragraph
+    - StaticText "आपका हिसाब इसी फोन में रहता है — कोई सर्वर नहीं, कोई लॉगिन नहीं।"
+- navigation
+  - button "रजिस्टर" [ref=e4]
+    - StaticText "रजिस्टर"
+  - button "खोजें" [ref=e5]
+    - StaticText "खोजें"
+  - button "नई दाली" [ref=e6]
+    - StaticText "नई दाली"
+  - button "और" [ref=e7]
+    - StaticText "और"
+- region "Notifications alt+T" [ref=e1]
+- button "Open Next.js Dev Tools" [expanded=false, ref=e8]
+  - image
+- alert
