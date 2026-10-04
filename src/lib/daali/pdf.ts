@@ -428,30 +428,18 @@ export async function downloadRegisterPdf(
   const sheets = chunk(entries, ROWS_PER_SHEET);
   const container = document.createElement('div');
   container.setAttribute('aria-hidden', 'true');
+  // ⚠️ position: ABSOLUTE hai, fixed NAHI — fixed element ka capture scroll/
+  // visual-viewport offset par shift ho jata tha (phone par PDF ka upar ka
+  // hisaab kat jana — user report). Absolute = document coordinates, clone
+  // mein bhi wahi — kisi bhi scroll position par capture pakka sahi.
   Object.assign(container.style, {
-    position: 'fixed',
+    position: 'absolute',
     top: '0',
     left: '-10000px',
     width: `${PAGE_W}px`,
     zIndex: '-1',
     background: C.paper,
   } as Partial<CSSStyleDeclaration>);
-
-  sheets.forEach((sheet, si) => {
-    container.appendChild(
-      buildSheet({
-        event,
-        sheet,
-        sheetIndex: si,
-        sheetCount: sheets.length,
-        serialStart: si * ROWS_PER_SHEET + 1,
-        grandCount,
-        grandSum,
-        itemCount,
-        lang,
-      })
-    );
-  });
   document.body.appendChild(container);
 
   // Every value html2canvas reads through getComputedStyle is now parseable —
@@ -464,7 +452,20 @@ export async function downloadRegisterPdf(
     const H = pdf.internal.pageSize.getHeight();
     for (let i = 0; i < sheets.length; i++) {
       onProgress?.(i, sheets.length);
-      const source = container.children[i] as HTMLElement;
+      // ek waqt mein EK hi sheet DOM mein — phone ki memory kam kharch, document
+      // scroll height badhta nahi, aur capture geometry bilkul deterministic
+      const source = buildSheet({
+        event,
+        sheet: sheets[i],
+        sheetIndex: i,
+        sheetCount: sheets.length,
+        serialStart: i * ROWS_PER_SHEET + 1,
+        grandCount,
+        grandSum,
+        itemCount,
+        lang,
+      });
+      container.appendChild(source);
       let canvas: HTMLCanvasElement;
       try {
         canvas = await html2canvas(source, {
@@ -473,6 +474,8 @@ export async function downloadRegisterPdf(
           useCORS: true,
           logging: false,
           windowWidth: PAGE_W,
+          width: PAGE_W,
+          height: PAGE_H,
         });
       } catch {
         // phone par bade sheet mein ek baar fail ho sakta hai — kam quality se dobara
@@ -482,6 +485,8 @@ export async function downloadRegisterPdf(
           useCORS: true,
           logging: false,
           windowWidth: PAGE_W,
+          width: PAGE_W,
+          height: PAGE_H,
         });
       }
       // blank capture (phone paint race) — kam quality se dobara, phir bhi khali
@@ -493,11 +498,14 @@ export async function downloadRegisterPdf(
           useCORS: true,
           logging: false,
           windowWidth: PAGE_W,
+          width: PAGE_W,
+          height: PAGE_H,
         });
         if (canvasLooksBlank(canvas)) {
           throw new Error('daali-pdf-blank-capture');
         }
       }
+      container.removeChild(source);
       const img = canvas.toDataURL('image/jpeg', 0.9);
       if (i > 0) pdf.addPage();
       pdf.addImage(img, 'JPEG', 0, 0, W, H);

@@ -3,6 +3,7 @@ import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import { ServiceWorkerRegister } from "@/components/daali/service-worker-register";
 import { FontFaces } from "@/components/daali/font-faces";
+import { StaleCodeGuard } from "@/components/daali/stale-code-guard";
 
 // Build-time base path ('' in dev/preview, '/daali-register' on GitHub Pages)
 const BP = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
@@ -46,6 +47,7 @@ export default function RootLayout({
     <html lang="hi" suppressHydrationWarning>
       <body className="antialiased bg-background text-foreground min-h-screen">
         <FontFaces />
+        <StaleCodeGuard />
         {children}
         <Toaster position="bottom-center" />
         <ServiceWorkerRegister />

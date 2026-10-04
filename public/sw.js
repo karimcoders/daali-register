@@ -6,7 +6,7 @@
  * Base-path aware: the app can be hosted under a sub-path (GitHub Pages) —
  * the prefix is derived from the SW registration scope at runtime.
  */
-const CACHE = 'daali-v9';
+const CACHE = 'daali-v10';
 const BP = new URL(self.registration.scope).pathname.replace(/\/$/, ''); // '' or '/daali-register'
 const PRECACHE = [BP + '/', BP + '/manifest.json', BP + '/icons/icon-192.png', BP + '/icons/icon-512.png'];
 
