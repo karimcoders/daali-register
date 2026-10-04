@@ -167,3 +167,24 @@ Stage Summary:
 - Edit: गाँव/रिश्ता/रकम/नाम/तारीख़ — sab cells par tap kaam karta hai, cursor wahi pen ki tarah rakha jata hai; page header (कार्यक्रम/तारीख़/गाँव) bhi ab seedha tap karke sudhara ja sakta hai.
 - Har badlav history mein: header edits bhi (रजिस्टर की जानकारी बदली) detail ke saath.
 - Live: https://karimcoders.github.io/daali-register/ • Repo: https://github.com/karimcoders/daali-register (commit c3faa29)
+
+---
+Task ID: 8
+Agent: Super Z (main agent)
+Task: User round 6 — (1) "jab page complete hoga to next page automatic kyu nhi arah" → auto page-turn fix; (2) "pdf sahi kro" (4th report) → PDF hardening + real verification; (3) "share kar sakte h mobile number par, WhatsApp per individual kisi ka bhi" → per-guest WhatsApp share with phone numbers. Also shipped the previously unpushed commit 2a45b5d (tap-any-line writing, date removed, A-Z history, PDF 5-col rework).
+
+Work Log:
+- ROOT CAUSE #1 (auto page-turn): fillerCount double-subtracted the writing line (rows − entries − 1) while the WritingRow itself rendered INSIDE the filler map → every page drew ONE line short, and when a page reached rows−1 entries the writing line vanished entirely (no blank line left to tap) → the final entry of a page was unwritable → auto-turn "never fired". Fixed: fillerCount = rowsPerPage − pageEntries.length.
+- ROOT CAUSE #2: useRowsPerPage recomputed on EVERY resize — Android keyboard opening shrinks innerHeight → rows-per-page shrank mid-writing → page math chaos + rows jumping. Fixed: recompute only when width changes OR height grows (keyboard shrink ignored) + orientationchange listener.
+- onCommitted rewritten: fresh total from store state (no stale closures), turns exactly when the writing slot leaves the page, ALWAYS re-arms the pen (writeSignal bump) so the next line is ready even after mid-page filler writes; WritingRow serial honesty fix (serial = total+1, not +slotK).
+- WHATSAPP PER-GUEST SHARE: types/store +phone field (persisted, history-diffed, setEntryPhone action); new src/lib/daali/share.ts (buildDaaliReceipt — शुभ लाभ header, name, रकम/नेवता, village/relation, thanks in hi/ur/en; normalizeWaDigits — 10 digits → 91xx, 0-prefix stripped; waLink). Register grid gained a 6th column: subtle green MessageCircle icon per row; saved number → ONE tap opens wa.me with the receipt; no number → inline strip opens under the row (phone input + भेजें + ✕, no popup). EntryEditRow gained a phone field (Enter saves, blur auto-saves). History logs मोबाइल नंबर diffs.
+- PDF (4th report) hardening: canvasLooksBlank() pixel-sample test after each html2canvas capture (phone paint-race → blank page) with scale-1 retry, hard error instead of a blank PDF; toast now has BOTH actions — शेयर करें (re-opens share sheet with the PDF file → WhatsApp/Gmail/Save-to-Files) + खोलें (opens the blob PDF), 25s lifetime.
+- Strings hi/ur/en: shareWhatsapp, sendWhatsapp, phoneLabel, phonePh, whatsappOpening, numberSavedToast, fPhone, pdfShare. SW cache → daali-v9.
+- E2E (dev + live, agent-browser): 6/7-row pages written line-by-line → auto page-turn verified BOTH (dev: page 1→2 at 6 entries; live 375px: 1→2 at 7 entries, totals exact ₹3,108); share strip open/fill/send → wa.me/919431012345 with full Hindi receipt (name+₹+शुभ लाभ) → strip closes; saved number → instant share (verified real tab opened api.whatsapp.com/send with phone+text); edit-row phone saves to IDB; history shows मोबाइल नंबर records; Escape/✕ close the strip; mid-page filler write still works (entry #7 committed from 3rd filler line); PDF dev 131,508 B + live 129,386 B → pdftoppm rendered pages verified complete (no crop, totals visible); 375px no horizontal overflow, share icons visible & RTL-mirrored in Urdu (dir=rtl, Nastaliq); lint 0, tsc src clean, dict-scan CLEAN, translit/bidi pass.
+- Deploy: commit a20eb93 pushed (along with previously unpushed 2a45b5d) → Actions success → LIVE verified end-to-end.
+
+Stage Summary:
+- Page bharti hai to ab APNE AAP palat jati hai (root cause: writing line hi gayab ho rahi thi full pages par) — phone par keyboard-open page-math ko bhi nahi bigaad sakta.
+- Har mehmaan ki daali unke WhatsApp number par: line ke share icon se — number ek baar likho, phir ONE tap mein receipt (शुभ लाभ + naam + rakam + shukriya) unke number par.
+- PDF: blank-capture guard + share/open dono actions — phone par share sheet se seedha WhatsApp/Gmail mein bhejiye.
+- Live: https://karimcoders.github.io/daali-register/ • Repo: https://github.com/karimcoders/daali-register (a20eb93)
