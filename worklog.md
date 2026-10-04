@@ -188,3 +188,31 @@ Stage Summary:
 - Har mehmaan ki daali unke WhatsApp number par: line ke share icon se — number ek baar likho, phir ONE tap mein receipt (शुभ लाभ + naam + rakam + shukriya) unke number par.
 - PDF: blank-capture guard + share/open dono actions — phone par share sheet se seedha WhatsApp/Gmail mein bhejiye.
 - Live: https://karimcoders.github.io/daali-register/ • Repo: https://github.com/karimcoders/daali-register (a20eb93)
+
+---
+Task ID: 9
+Agent: Super Z (main agent)
+Task: User round 7 — live site "Application error: client-side exception" (screenshot) + PDF "ye kuch andar ja raha hai / sahi nahi arha" with screenshot showing the PDF title cut at the top edge. Diagnose BOTH from the user's real environment, fix at the root, deploy, live-verify.
+
+Work Log:
+- TRIAGE from screenshots: (1) live site fully crashed with Next.js "Application error" page; (2) PDF page-1 header clipped at the top (~30% of the title glyphs gone). Actions API confirmed both deploys (a20eb93 07:31, 208cc51 07:34) succeeded — crash most consistent with the deploy-window stale-HTML→404-chunk state on the user's phone (old SW + replaced chunk hashes), not a data bug.
+- Crash reproduction attempts (agent-browser): fresh live session loads fine; seeded pre-round-6 IndexedDB shape (entries WITHOUT phone/item, WITH pageNumber/rowNumber) → home + notebook load fine → app code is data-safe. Root risk = stale code windows, so made the app SELF-HEALING instead of guessing device state.
+- PDF deep-dive (user's exact data: आलम राज / 31 दिसंबर 2026 / madhopur / राज आलम ₹500): exported from live on mobile 375×812 (dpr1) AND desktop — could NOT reproduce top-crop unscrolled; crop is scroll/visual-viewport dependent (fixed-position capture container + scrolled page → capture origin shifted up).
+  - ROOT CAUSE (pdf.ts): capture container was `position: fixed; top: 0; left: -10000px`. html2canvas bounds math for FIXED elements breaks when the page is scrolled (viewport-relative rect + scroll compensation disagree with the unscrolled clone) → capture shifted up by the scroll offset → title cut. FIX: container now `position: absolute` (true document coordinates, clone-identical at ANY scroll position) + sheets captured ONE at a time (append→capture→remove: lower phone memory, no document-height blowup) + explicit `width/height: PAGE_W/H` options.
+  - FONT CLARITY (pdf.ts): zoomed 300-DPI forensics first suggested glyph corruption ("नेवता"→"वेवता", "सेट"→"अेट", title misread as "दाला रोकड़ा") — proved via fonttools cmap/advance dump + canvas measureText (न=0.681em exact) + DOM-vs-canvas screenshots that Kalam's HANDWRITING GLYPH DESIGN itself reads that way, not corruption. Since a village reader misread the PDF, switched PDF-ONLY text to Noto Sans Devanagari (title/totals 700, items 500): screen stays Kalam (copy jaisi), PDF prints crystal-clear. Pre-capture font loads now cover 500/700 Noto weights. Urdu keeps Nastaliq.
+- SELF-HEALING CRASH RECOVERY:
+  - src/app/global-error.tsx (new): paper-style Hindi crash page ("दाली रजिस्टर खुल नहीं पाया") replacing Next's English error page; AUTO-heals once when the error is a stale-chunk signature (ChunkLoadError/dynamic-import/module-script failures) — clears all caches + unregisters SWs + location.replace (sessionStorage-guarded); manual "फिर से खोलें" + "बिना साफ़ किए दोबारा कोशिश करें" (reset) buttons; fully inline-styled (works even if CSS chunks failed).
+  - src/components/daali/stale-code-guard.tsx (new): runtime watcher mounted in layout — error/unhandledrejection scanners + capture-phase <script> load-failure listener for /_next/static/ URLs → same heal-and-reload (90s cooldown). Catches mid-session stale chunks (e.g., jspdf/html2canvas lazy imports 404ing after a deploy).
+  - sw.js → daali-v10 (activate purges old caches).
+- QA: eslint 0 problems; tsc src 0 errors; dict-scan CLEAN; translit/bidi pass; static export build ✓ (guard + global-error strings confirmed inside live chunks e71a471b…, 4f1ea8e9…; sw.js v10 live).
+- E2E (dev + LIVE, real downloads, pdftoppm renders):
+  - PDF scrolled-page exports: dev 375×812 scroll 350 + bottom + desktop 1280 scroll 500 → title/meta/rows/footer ALL complete (ds-*, db-*, dd-*); live export scrolled 380/400 → complete (ln-1.png, live-final.pdf 135,988 B %PDF-1.3).
+  - Multi-page (per-sheet capture loop): 25-entry register → 2 sheets, page 2 header "Bada Register — पन्ना 2/2", rows 21–25, footer "कुल लोग: 25 • कुल दाली: ₹36,075" exact (111×325), page-1 title intact while scrolled.
+  - Auto page-turn (live, 375px): wrote guests 4→9 line-by-line → page input auto-flipped 1→2 exactly at the 9th entry.
+  - WhatsApp individual share (live): share strip → 9431012345 → भेजें → window.open captured `https://wa.me/919431012345?text=…` with full receipt (🙏 शुभ लाभ / आलम राज — 31 दिसंबर 2026 / राज आलम जी / रकम *₹500* / माधोपुर • ना / धन्यवाद); number persisted to IndexedDB; second tap = INSTANT share (no strip). 0 console errors whole session.
+- Deploys: 7c917bf (PDF absolute capture + self-heal trio + SW v10) → Actions success; 45b2f88 (PDF print-clear Noto fonts) → Actions success → LIVE re-verified end-to-end.
+
+Stage Summary:
+- PDF ab pakka: scroll kiye bina/kiye, 1 page ya 25 — kabhi nahi katega; aur ab Kalam ki utheli likhawat ki jagah saaf Noto Devanagari (जि/ने/से door se bhi sahi padhe).
+- Site kabhi adhuri na rahe: deploy ke dauran purani files milen to app khud caches saaf karke fresh khul jata hai (auto-heal), warna Hindi recovery page ka "फिर से खोलें" button — data hamesha safe (IndexedDB untouched).
+- Live: https://karimcoders.github.io/daali-register/ • Repo: https://github.com/karimcoders/daali-register (45b2f88)
